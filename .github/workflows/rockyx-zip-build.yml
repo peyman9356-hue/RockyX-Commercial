@@ -1,0 +1,74 @@
+name: Rocky X CI Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "RockyX_Phase1_ClusterA_Revision5_2026-09.zip"
+      - ".github/workflows/rockyx-zip-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f RockyX_Phase1_ClusterA_Revision5_2026-09.zip
+
+          EXPECTED="c4cf8758df287f8681cb7daa9a8f188b83fef5538cb9e219a57292d49fee9aaa"
+          ACTUAL="$(sha256sum RockyX_Phase1_ClusterA_Revision5_2026-09.zip | awk '{print $1}')"
+
+          echo "Expected SHA-256: $EXPECTED"
+          echo "Actual SHA-256:   $ACTUAL"
+
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Extract project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf rockyx-src
+          mkdir rockyx-src
+          unzip -q RockyX_Phase1_ClusterA_Revision5_2026-09.zip -d rockyx-src
+
+          test -f rockyx-src/settings.gradle.kts
+          test -f rockyx-src/app/build.gradle.kts
+          test -f rockyx-src/tools/integration-check.sh
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Static integration checks
+        working-directory: rockyx-src
+        run: bash tools/integration-check.sh
+
+      - name: JVM tests
+        working-directory: rockyx-src
+        run: gradle --no-daemon test
+
+      - name: Android debug build
+        working-directory: rockyx-src
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocky-x-debug-apk-v0.32.2
+          path: rockyx-src/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
