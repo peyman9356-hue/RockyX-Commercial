@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "rockyx_rev7.zip"
+      - "rockyx_rev14.zip"
       - ".github/workflows/rockyx-zip-build.yml"
 
 jobs:
@@ -13,17 +13,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Verify Revision 7 archive
+      - name: Verify Revision 14 archive
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f rockyx_rev7.zip
+          test -f rockyx_rev14.zip
 
-          EXPECTED="8c040a3cee6254d8060e50d20abd182a9ebd51711f1efede97b2efa96219f441"
-          ACTUAL="$(sha256sum rockyx_rev7.zip | awk '{print $1}')"
+          EXPECTED="ed6d3f535a0433d94519d5f5267dae6ea96661d8fd88375603a06324b2159cb5"
+          ACTUAL="$(sha256sum rockyx_rev14.zip | awk '{print $1}')"
 
           echo "Expected SHA-256: $EXPECTED"
           echo "Actual SHA-256:   $ACTUAL"
@@ -38,14 +38,14 @@ jobs:
           rm -rf rockyx-src
           mkdir rockyx-src
 
-          unzip -q rockyx_rev7.zip -d rockyx-src
+          unzip -q rockyx_rev14.zip -d rockyx-src
 
           test -f rockyx-src/settings.gradle.kts
           test -f rockyx-src/app/build.gradle.kts
           test -f rockyx-src/tools/integration-check.sh
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -75,7 +75,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.2-revision7
+          name: rocky-x-debug-apk-v0.32.2-revision14
           path: rockyx-src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
