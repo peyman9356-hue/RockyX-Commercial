@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "RockyX_Phase1_ClusterA_Revision5_2026-09.zip"
+      - "RockyX_Phase1_ClusterA_Revision6_2026-09.zip"
       - ".github/workflows/rockyx-zip-build.yml"
 
 jobs:
@@ -15,14 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify archive
+      - name: Verify Revision 6 archive
         shell: bash
         run: |
           set -euo pipefail
-          test -f RockyX_Phase1_ClusterA_Revision5_2026-09.zip
 
-          EXPECTED="c4cf8758df287f8681cb7daa9a8f188b83fef5538cb9e219a57292d49fee9aaa"
-          ACTUAL="$(sha256sum RockyX_Phase1_ClusterA_Revision5_2026-09.zip | awk '{print $1}')"
+          test -f RockyX_Phase1_ClusterA_Revision6_2026-09.zip
+
+          EXPECTED="5b2f4304c8947270e89542eaec490dec9dd00ccd19a047650c020ec114b1f45a"
+          ACTUAL="$(sha256sum RockyX_Phase1_ClusterA_Revision6_2026-09.zip | awk '{print $1}')"
 
           echo "Expected SHA-256: $EXPECTED"
           echo "Actual SHA-256:   $ACTUAL"
@@ -33,9 +34,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           rm -rf rockyx-src
           mkdir rockyx-src
-          unzip -q RockyX_Phase1_ClusterA_Revision5_2026-09.zip -d rockyx-src
+
+          unzip -q RockyX_Phase1_ClusterA_Revision6_2026-09.zip -d rockyx-src
 
           test -f rockyx-src/settings.gradle.kts
           test -f rockyx-src/app/build.gradle.kts
@@ -64,11 +67,15 @@ jobs:
         working-directory: rockyx-src
         run: gradle --no-daemon :app:assembleDebug
 
+      - name: Backend distribution build
+        working-directory: rockyx-src
+        run: gradle --no-daemon :backend:build
+
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.2
+          name: rocky-x-debug-apk-v0.32.2-revision6
           path: rockyx-src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
