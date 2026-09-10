@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "RockyX_Phase1_ClusterA_Revision6_2026-09.zip"
+      - "rockyx_rev7.zip"
       - ".github/workflows/rockyx-zip-build.yml"
 
 jobs:
@@ -15,15 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Revision 6 archive
+      - name: Verify Revision 7 archive
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f RockyX_Phase1_ClusterA_Revision6_2026-09.zip
+          test -f rockyx_rev7.zip
 
-          EXPECTED="5b2f4304c8947270e89542eaec490dec9dd00ccd19a047650c020ec114b1f45a"
-          ACTUAL="$(sha256sum RockyX_Phase1_ClusterA_Revision6_2026-09.zip | awk '{print $1}')"
+          EXPECTED="8c040a3cee6254d8060e50d20abd182a9ebd51711f1efede97b2efa96219f441"
+          ACTUAL="$(sha256sum rockyx_rev7.zip | awk '{print $1}')"
 
           echo "Expected SHA-256: $EXPECTED"
           echo "Actual SHA-256:   $ACTUAL"
@@ -38,7 +38,7 @@ jobs:
           rm -rf rockyx-src
           mkdir rockyx-src
 
-          unzip -q RockyX_Phase1_ClusterA_Revision6_2026-09.zip -d rockyx-src
+          unzip -q rockyx_rev7.zip -d rockyx-src
 
           test -f rockyx-src/settings.gradle.kts
           test -f rockyx-src/app/build.gradle.kts
@@ -75,7 +75,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.2-revision6
+          name: rocky-x-debug-apk-v0.32.2-revision7
           path: rockyx-src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
