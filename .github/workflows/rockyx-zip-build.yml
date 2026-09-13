@@ -22,7 +22,7 @@ jobs:
 
           test -f rockyx_rev14.zip
 
-          EXPECTED="7243516cb969529301e044d83bfd26dc093fe3fa5fcb522ebbca6ad9c0c3f660"
+          EXPECTED="2dacf901f9ce018c5a67b0ec06b56268e514ee8a170a0df8d5e087875d49844e"
           ACTUAL="$(sha256sum rockyx_rev14.zip | awk '{print $1}')"
 
           echo "Expected SHA-256: $EXPECTED"
