@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v2.zip"
+      - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v3.zip"
       - ".github/workflows/rockyx-zip-build.yml"
 
 jobs:
@@ -15,40 +15,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Verify Revision 15 Phase 1 v2 archive
+      - name: Verify Revision 15 Phase 1 v3 archive
         shell: bash
         run: |
           set -euo pipefail
-
-          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v2.zip"
-
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v3.zip"
           test -f "$ARCHIVE"
-
-          EXPECTED="f406ed86cfe189925636f4e521984dedc2bb9d2e1861a093a7bfd053f9f3631d"
+          EXPECTED="0bf2b06187d76784b8683807dd8c139d4f122b15908e8afffec393beb81aed00"
           ACTUAL="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
-
           echo "Expected SHA-256: $EXPECTED"
           echo "Actual SHA-256:   $ACTUAL"
-
           test "$ACTUAL" = "$EXPECTED"
 
       - name: Extract and validate project layout
         shell: bash
         run: |
           set -euo pipefail
-
           rm -rf rockyx-src
           mkdir rockyx-src
-
-          unzip -q "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v2.zip" -d rockyx-src
-
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v3.zip"
+          unzip -q "$ARCHIVE" -d rockyx-src
           PROJECT_ROOT="rockyx-src/rev14src"
-
           test -f "$PROJECT_ROOT/settings.gradle.kts"
           test -f "$PROJECT_ROOT/app/build.gradle.kts"
           test -f "$PROJECT_ROOT/backend/build.gradle.kts"
           test -f "$PROJECT_ROOT/tools/integration-check.sh"
-
           echo "Verified project root: $PROJECT_ROOT"
 
       - name: Set up Java 17
@@ -82,25 +73,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          APK_COUNT="$(find rockyx-src/rev14src/app/build/outputs/apk/debug \
-            -maxdepth 1 \
-            -type f \
-            -name '*.apk' | wc -l)"
-
+          APK_COUNT="$(find rockyx-src/rev14src/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | wc -l)"
           test "$APK_COUNT" -ge 1
-
-          find rockyx-src/rev14src/app/build/outputs/apk/debug \
-            -maxdepth 1 \
-            -type f \
-            -name '*.apk' \
-            -print
+          find rockyx-src/rev14src/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
 
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.3-revision15-phase1-v2
+          name: rocky-x-debug-apk-v0.32.3-revision15-phase1-v3
           path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
