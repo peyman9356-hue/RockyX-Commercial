@@ -1,0 +1,87 @@
+name: Rocky X CI Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+      - ".github/workflows/rockyx-zip-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Verify Revision 15 Phase 1 v5 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+          test -f "$ARCHIVE"
+          EXPECTED="02c317f77387050396879e299b39890037f5a6e6cb317faae813ab881f7b033e"
+          ACTUAL="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+          echo "Expected SHA-256: $EXPECTED"
+          echo "Actual SHA-256:   $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Extract and validate project layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf rockyx-src
+          mkdir rockyx-src
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+          unzip -q "$ARCHIVE" -d rockyx-src
+          PROJECT_ROOT="rockyx-src/rev14src"
+          test -f "$PROJECT_ROOT/settings.gradle.kts"
+          test -f "$PROJECT_ROOT/app/build.gradle.kts"
+          test -f "$PROJECT_ROOT/backend/build.gradle.kts"
+          test -f "$PROJECT_ROOT/tools/integration-check.sh"
+          echo "Verified project root: $PROJECT_ROOT"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Static integration checks
+        working-directory: rockyx-src/rev14src
+        run: bash tools/integration-check.sh
+
+      - name: JVM tests
+        working-directory: rockyx-src/rev14src
+        run: gradle --no-daemon test
+
+      - name: Android debug build
+        working-directory: rockyx-src/rev14src
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Backend distribution build
+        working-directory: rockyx-src/rev14src
+        run: gradle --no-daemon :backend:build
+
+      - name: Verify APK output
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_COUNT="$(find rockyx-src/rev14src/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | wc -l)"
+          test "$APK_COUNT" -ge 1
+          find rockyx-src/rev14src/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocky-x-debug-apk-v0.32.5-revision15-phase1-v5
+          path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
