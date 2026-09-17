@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+      - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v6.zip"
       - ".github/workflows/rockyx-zip-build.yml"
 
 jobs:
@@ -15,14 +15,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Verify Revision 15 Phase 1 v5 archive
+      - name: Verify Revision 15 Phase 1 v6 archive
         shell: bash
         run: |
           set -euo pipefail
-          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v6.zip"
           test -f "$ARCHIVE"
 
-          EXPECTED="02c317f77387050396879e299b39890037f5a6e6cb317faae813ab881f7b033e"
+          EXPECTED="f9403b8fbe1042e5ef1ece441da5a701fca1d344045285e58e8dc26c364152f0"
           ACTUAL="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
 
           echo "Expected SHA-256: $EXPECTED"
@@ -37,7 +37,7 @@ jobs:
           rm -rf rockyx-src
           mkdir rockyx-src
 
-          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v5.zip"
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v6.zip"
           unzip -q "$ARCHIVE" -d rockyx-src
 
           PROJECT_ROOT="rockyx-src/rev14src"
@@ -88,7 +88,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.5-revision15-phase1-v5
+          name: rocky-x-debug-apk-v0.32.6-revision15-phase1-v6
           path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
