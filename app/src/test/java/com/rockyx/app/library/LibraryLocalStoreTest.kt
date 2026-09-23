@@ -1,6 +1,7 @@
 package com.rockyx.app.library
 
 import android.content.Context
+import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import com.rockyx.app.data.content.ContentManifest
 import com.rockyx.app.domain.model.Access
@@ -13,7 +14,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(RobolectricTestRunner::class)
 class LibraryLocalStoreTest {
     private lateinit var context: Context
     private lateinit var store: LibraryLocalStore
