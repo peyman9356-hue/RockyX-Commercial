@@ -6,6 +6,8 @@ on:
     paths:
       - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip"
       - "app/src/main/java/com/rockyx/app/domain/training/**"
+      - "app/src/main/java/com/rockyx/app/library/**"
+      - "app/src/test/java/com/rockyx/app/library/**"
       - ".github/workflows/rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8_WORKFLOW.yml"
 
 jobs:
@@ -72,7 +74,24 @@ jobs:
             cmp -s "$SRC/$f" "$DST/$f"
           done
 
-          echo "Gate 1 tracked source overlay verified: ${#required[@]} files"
+          LIB_SRC="app/src/main/java/com/rockyx/app/library"
+          LIB_DST="$PROJECT_ROOT/$LIB_SRC"
+          test -d "$LIB_SRC"
+          mkdir -p "$LIB_DST"
+          cp "$LIB_SRC"/*.kt "$LIB_DST"/
+          test -s "$LIB_DST/LibraryModels.kt"
+          test -s "$LIB_DST/LibraryCatalog.kt"
+          test -s "$LIB_DST/LibraryRepository.kt"
+          test -s "$LIB_DST/LibraryLocalStore.kt"
+
+          LIB_TEST_SRC="app/src/test/java/com/rockyx/app/library"
+          LIB_TEST_DST="$PROJECT_ROOT/$LIB_TEST_SRC"
+          test -d "$LIB_TEST_SRC"
+          mkdir -p "$LIB_TEST_DST"
+          cp "$LIB_TEST_SRC"/*.kt "$LIB_TEST_DST"/
+          test -s "$LIB_TEST_DST/LibraryCatalogTest.kt"
+
+          echo "Gate 1 + Library tracked source overlay verified: ${#required[@]} training files + 4 library files + library tests"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
