@@ -147,11 +147,5 @@ count_recent = text_main.count(old_recent)
 if count_recent < 1:
     raise SystemExit(f"recent lesson action: expected at least 1 match, found {count_recent}")
 main.write_text(text_main.replace(old_recent, new_recent), encoding="utf-8")
-replace_once(
-    main,
-    "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLesson(lesson.title) }), LinearLayout.LayoutParams(-1, dp(48))) }",
-    "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLessonById(lesson.id) }), LinearLayout.LayoutParams(-1, dp(48))) }",
-    "recent all action"
-)
 
 print("Library UI integration overlay applied.")
