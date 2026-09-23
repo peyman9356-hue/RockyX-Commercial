@@ -1,7 +1,7 @@
 package com.rockyx.app.library
 
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
+import org.robolectric.RuntimeEnvironment
 import com.rockyx.app.data.content.ContentManifest
 import com.rockyx.app.domain.model.Access
 import com.rockyx.app.domain.model.Chapter
@@ -20,7 +20,7 @@ class LibraryLocalStoreTest {
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
+        context = RuntimeEnvironment.getApplication()
         context.deleteDatabase("rockyx_library_v1.db")
         store = LibraryLocalStore(context)
     }
