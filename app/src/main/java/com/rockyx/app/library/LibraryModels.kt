@@ -63,3 +63,11 @@ data class LibrarySnapshot(
 )
 
 enum class LibraryInstallResult { INSTALLED, ALREADY_PRESENT }
+
+
+data class LibraryLessonRef(
+    val courseId: String,
+    val chapterId: String,
+    val lessonId: String,
+    val title: String
+)
