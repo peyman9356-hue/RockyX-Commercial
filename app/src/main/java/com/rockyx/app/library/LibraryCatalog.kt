@@ -50,7 +50,9 @@ object LibraryCatalogBuilder {
                                     type = ref.type,
                                     uri = uri,
                                     thumbnailUri = ref.thumbnailUri,
-                                    downloadable = ref.downloadable
+                                    downloadable = ref.downloadable,
+                                    sha256 = ref.sha256,
+                                    sizeBytes = ref.sizeBytes
                                 )
                             )
                         }
@@ -112,7 +114,8 @@ object LibraryCatalogBuilder {
             append("M|").append(asset.id).append('|').append(asset.sourceMediaId).append('|')
                 .append(asset.lessonVersionId).append('|').append(asset.type.name).append('|')
                 .append(asset.uri).append('|').append(asset.thumbnailUri.orEmpty()).append('|')
-                .append(asset.downloadable).append('\n')
+                .append(asset.downloadable).append('|').append(asset.sha256.orEmpty()).append('|')
+                .append(asset.sizeBytes ?: -1L).append('\n')
         }
     }
 
@@ -130,6 +133,20 @@ object LibraryValidator {
         require(snapshot.media.all { it.lessonVersionId in lessonIds }) { "Media references unknown lesson version" }
         require(snapshot.lessons.all { it.durationMinutes in 1..1440 }) { "Invalid lesson duration" }
         require(snapshot.media.all { it.uri.isNotBlank() }) { "Media URI must not be blank" }
-        require(snapshot.media.all { !it.downloadable || it.uri.isNotBlank() }) { "Downloadable media requires URI" }
+        require(snapshot.media.all { it.sha256 == null || it.sha256.matches(Regex("^[0-9a-f]{64}$")) }) {
+            "Media sha256 must be lowercase SHA-256 when present"
+        }
+        require(snapshot.media.all { it.sizeBytes == null || it.sizeBytes > 0L }) {
+            "Media sizeBytes must be positive when present"
+        }
+        require(snapshot.media.all {
+            !it.downloadable || (
+                it.uri.isNotBlank() &&
+                it.sha256 != null &&
+                it.sha256.matches(Regex("^[0-9a-f]{64}$")) &&
+                it.sizeBytes != null &&
+                it.sizeBytes > 0L
+            )
+        }) { "Downloadable media requires URI, SHA-256, and positive sizeBytes" }
     }
 }
