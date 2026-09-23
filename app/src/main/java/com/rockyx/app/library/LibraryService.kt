@@ -22,6 +22,12 @@ class LibraryService(context: Context) : AutoCloseable {
         store.lesson(courseId, chapterId, lessonId)
     fun mediaForLesson(lessonVersionId: String): List<LibraryMediaAsset> =
         store.mediaForLesson(lessonVersionId)
+
+    fun mediaAssets(): List<LibraryMediaAsset> =
+        lessons().flatMap { store.mediaForLesson(it.id) }
+
+    fun setDownloadStatus(status: LibraryDownloadStatus) =
+        store.setDownloadStatus(status)
     fun downloadStatus(mediaId: String): LibraryDownloadStatus? =
         store.downloadStatus(mediaId)
 
