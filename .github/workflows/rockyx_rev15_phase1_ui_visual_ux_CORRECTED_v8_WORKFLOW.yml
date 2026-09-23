@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip"
+      - "app/src/main/java/com/rockyx/app/domain/training/**"
       - ".github/workflows/rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8_WORKFLOW.yml"
 
 jobs:
@@ -41,6 +42,37 @@ jobs:
           test -f "$PROJECT_ROOT/backend/build.gradle.kts"
           test -f "$PROJECT_ROOT/tools/integration-check.sh"
           echo "Verified project root: $PROJECT_ROOT"
+
+      - name: Overlay tracked Gate 1 domain foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ROOT="rockyx-src/rev14src"
+          SRC="app/src/main/java/com/rockyx/app/domain/training"
+          DST="$PROJECT_ROOT/$SRC"
+
+          required=(
+            "SitSessionAggregator.kt"
+            "SkillStateProjector.kt"
+            "TrainingContractFoundation.kt"
+            "TrainingDecisionEngine.kt"
+            "TrainingModels.kt"
+            "TrainingPolicyEngine.kt"
+            "TrainingValidation.kt"
+          )
+
+          for f in "${required[@]}"; do
+            test -s "$SRC/$f"
+          done
+
+          mkdir -p "$DST"
+          cp "$SRC"/*.kt "$DST"/
+
+          for f in "${required[@]}"; do
+            cmp -s "$SRC/$f" "$DST/$f"
+          done
+
+          echo "Gate 1 tracked source overlay verified: ${#required[@]} files"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -81,7 +113,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: rocky-x-debug-apk-v0.32.8-revision15-phase1-v8
+          name: rocky-x-gate1-v8-source-overlay-debug-apk
           path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
