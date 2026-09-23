@@ -3,6 +3,7 @@ package com.rockyx.app.library
 import android.content.Context
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 import com.rockyx.app.data.content.ContentManifest
 import com.rockyx.app.domain.model.Access
 import com.rockyx.app.domain.model.Chapter
@@ -17,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class LibraryLocalStoreTest {
     private lateinit var context: Context
     private lateinit var store: LibraryLocalStore
@@ -55,7 +57,7 @@ class LibraryLocalStoreTest {
         store.install(en)
 
         assertEquals(en.version.key, store.activeContentKey())
-        assertEquals("Sit", store.lesson("beginner", "foundation", "sit")?.title,)
+        assertEquals("Sit", store.lesson("beginner", "foundation", "sit")?.title)
 
         assertEquals(1, store.lessons(fa.version.key).size)
         assertEquals(1, store.lessons(en.version.key).size)
