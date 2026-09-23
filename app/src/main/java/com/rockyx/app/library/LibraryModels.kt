@@ -44,7 +44,9 @@ data class LibraryMediaAsset(
     val type: ContentType,
     val uri: String,
     val thumbnailUri: String?,
-    val downloadable: Boolean
+    val downloadable: Boolean,
+    val sha256: String? = null,
+    val sizeBytes: Long? = null
 )
 
 enum class LibraryDownloadState { NOT_REQUESTED, QUEUED, DOWNLOADING, COMPLETED, FAILED, REMOVED }
