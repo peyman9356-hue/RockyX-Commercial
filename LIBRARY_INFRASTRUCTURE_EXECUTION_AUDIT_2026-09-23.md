@@ -37,16 +37,16 @@ Status: FOUNDATION IMPLEMENTED / PRODUCTION NOT YET VERIFIED
 
 ## Executable evidence
 Successful GitHub Actions run:
-https://github.com/peyman9356-hue/RockyX-Commercial/actions/runs/35888902657
+https://github.com/peyman9356-hue/RockyX-Commercial/actions/runs/35889848717
 
 Commit under test:
-854e8c81a384ca69e6036a76c0e8e96c29e14663
+15f9fe11246f56a7383d021ba25add0c7b11c312
 
 ## Important limitations
 The following are NOT claimed as production-ready:
 - Real production media binaries are not yet present in the catalog.
 - Media checksum/size/signature metadata is not yet mandatory in the catalog contract.
-- Media3 download completion/reconciliation is not yet persisted into Library download state as a verified end-to-end event stream.
+- Device-level download execution has now been connected to persistent Library download state; real network/media completion remains unverified because the catalog still contains no production media binaries.
 - Content sync / remote publish / rollback / signature verification is not yet integrated with this Library store.
 - Health/breed categories remain placeholders.
 - The extracted V8 project is still supplied through the fixed archive + deterministic overlay mechanism; source migration to a fully tracked normal project tree remains an architectural debt.
@@ -54,4 +54,5 @@ The following are NOT claimed as production-ready:
 
 ## Gate status
 Library infrastructure foundation: VERIFIED by CI.
+Library media download state integration: VERIFIED by CI.
 Library production readiness: HOLD.
