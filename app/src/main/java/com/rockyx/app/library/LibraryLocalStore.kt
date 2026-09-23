@@ -12,7 +12,7 @@ class LibraryInvariantException(message: String) : IllegalStateException(message
 class LibraryLocalStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION), LibraryRepository {
     companion object {
         private const val DB_NAME = "rockyx_library_v1.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
     }
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -65,6 +65,8 @@ class LibraryLocalStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
                 uri TEXT NOT NULL,
                 thumbnail_uri TEXT,
                 downloadable INTEGER NOT NULL,
+                sha256 TEXT,
+                size_bytes INTEGER,
                 FOREIGN KEY(lesson_version_id) REFERENCES library_lesson_version(id)
             )
         """.trimIndent())
@@ -89,7 +91,11 @@ class LibraryLocalStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion != newVersion) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE library_media ADD COLUMN sha256 TEXT")
+            db.execSQL("ALTER TABLE library_media ADD COLUMN size_bytes INTEGER")
+        }
+        if (newVersion != DB_VERSION) {
             throw LibraryInvariantException("Unsupported Library DB upgrade: $oldVersion -> $newVersion")
         }
     }
@@ -152,6 +158,8 @@ class LibraryLocalStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
                     put("uri", media.uri)
                     put("thumbnail_uri", media.thumbnailUri)
                     put("downloadable", if (media.downloadable) 1 else 0)
+                    put("sha256", media.sha256)
+                    media.sizeBytes?.let { put("size_bytes", it) }
                 })
             }
 
@@ -253,7 +261,9 @@ class LibraryLocalStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
         type = ContentType.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("type"))),
         uri = cursor.getString(cursor.getColumnIndexOrThrow("uri")),
         thumbnailUri = cursor.getString(cursor.getColumnIndexOrThrow("thumbnail_uri")),
-        downloadable = cursor.getInt(cursor.getColumnIndexOrThrow("downloadable")) == 1
+        downloadable = cursor.getInt(cursor.getColumnIndexOrThrow("downloadable")) == 1,
+        sha256 = cursor.getString(cursor.getColumnIndexOrThrow("sha256")),
+        sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow("size_bytes")).takeIf { !cursor.isNull(cursor.getColumnIndexOrThrow("size_bytes")) }
     )
 
     private fun split(value: String): List<String> = value.takeIf { it.isNotEmpty() }?.split('\u001f').orEmpty()
