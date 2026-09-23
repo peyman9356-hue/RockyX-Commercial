@@ -140,7 +140,18 @@ replace_once(
     "library panel lesson lists"
 )
 
-replace_once(main, "menuRow(lesson.title, { openLibraryLesson(lesson.title) })", "menuRow(lesson.title, { openLibraryLessonById(lesson.id) })", "recent lesson action")
-replace_once(main, "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLesson(lesson.title) }), LinearLayout.LayoutParams(-1, dp(48))) }", "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLessonById(lesson.id) }), LinearLayout.LayoutParams(-1, dp(48))) }", "recent all action")
+old_recent = "menuRow(lesson.title, { openLibraryLesson(lesson.title) })"
+new_recent = "menuRow(lesson.title, { openLibraryLessonById(lesson.id) })"
+text_main = main.read_text(encoding="utf-8")
+count_recent = text_main.count(old_recent)
+if count_recent < 1:
+    raise SystemExit(f"recent lesson action: expected at least 1 match, found {count_recent}")
+main.write_text(text_main.replace(old_recent, new_recent), encoding="utf-8")
+replace_once(
+    main,
+    "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLesson(lesson.title) }), LinearLayout.LayoutParams(-1, dp(48))) }",
+    "all.forEach { lesson -> root.addView(menuRow(lesson.title, { openLibraryLessonById(lesson.id) }), LinearLayout.LayoutParams(-1, dp(48))) }",
+    "recent all action"
+)
 
 print("Library UI integration overlay applied.")
