@@ -182,4 +182,92 @@ replace_once(
     "versioned media lesson mapping"
 )
 
+replace_once(
+    root / "app/src/main/java/com/rockyx/app/media/MediaDownloadService.kt",
+    "    private var cache: SimpleCache? = null\n",
+    "    private var cache: SimpleCache? = null\n    private var downloadManager: DownloadManager? = null\n",
+    "media download manager field"
+)
+
+replace_once(
+    root / "app/src/main/java/com/rockyx/app/media/MediaDownloadService.kt",
+    """    fun dataSourceFactory(context: Context): CacheDataSource.Factory {
+        val upstream = DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        return CacheDataSource.Factory().setCache(cache(context)).setUpstreamDataSourceFactory(upstream)
+    }
+""",
+    """    fun dataSourceFactory(context: Context): CacheDataSource.Factory {
+        val upstream = DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory())
+        return CacheDataSource.Factory().setCache(cache(context)).setUpstreamDataSourceFactory(upstream)
+    }
+
+    @Synchronized
+    fun downloadManager(context: Context): DownloadManager {
+        val appContext = context.applicationContext
+        return downloadManager ?: DownloadManager(
+            appContext,
+            StandaloneDatabaseProvider(appContext),
+            cache(appContext),
+            DefaultHttpDataSource.Factory(),
+            java.util.concurrent.Executor { it.run() }
+        ).also { downloadManager = it }
+    }
+""",
+    "media download manager singleton"
+)
+
+replace_once(
+    root / "app/src/main/java/com/rockyx/app/media/MediaDownloadService.kt",
+    """class RockyXDownloadService : DownloadService(1001) {
+    override fun getDownloadManager(): DownloadManager {
+        val context = applicationContext
+        val db = StandaloneDatabaseProvider(context)
+        val cache = MediaDownloadRepository.cache(context)
+        val dataSourceFactory = DefaultHttpDataSource.Factory()
+        val downloadExecutor = java.util.concurrent.Executor { it.run() }
+        return DownloadManager(context, db, cache, dataSourceFactory, downloadExecutor)
+    }
+""",
+    """class RockyXDownloadService : DownloadService(1001) {
+    override fun getDownloadManager(): DownloadManager =
+        MediaDownloadRepository.downloadManager(applicationContext)
+""",
+    "download service singleton manager"
+)
+
+replace_once(
+    controller,
+    "import com.rockyx.app.library.LibraryService\n",
+    "import com.rockyx.app.library.LibraryService\nimport com.rockyx.app.library.LibraryDownloadTracker\n",
+    "controller download tracker import"
+)
+
+replace_once(
+    controller,
+    "    val library = LibraryService(context)\n",
+    "    val library = LibraryService(context)\n    val libraryDownloads = LibraryDownloadTracker(context, library)\n",
+    "controller download tracker"
+)
+
+replace_once(
+    main,
+    "import com.rockyx.app.library.LibraryLessonVersion\n",
+    "import com.rockyx.app.library.LibraryLessonVersion\nimport com.rockyx.app.library.LibraryDownloadTracker\n",
+    "main download tracker import"
+)
+
+replace_once(
+    main,
+    "    override fun onDestroy() { billingScope.cancel(); billingClient?.disconnect(); billingClient = null; mediaEngine?.release(); mediaEngine = null; app.library.close(); app.api.close(); super.onDestroy() }\n",
+    "    override fun onDestroy() { billingScope.cancel(); billingClient?.disconnect(); billingClient = null; mediaEngine?.release(); mediaEngine = null; app.libraryDownloads.close(); app.library.close(); app.api.close(); super.onDestroy() }\n",
+    "main download tracker close"
+)
+
+replace_once(
+    main,
+    "                mediaEngine?.download(descriptor)\n",
+    "                app.libraryDownloads.enqueue(descriptor)\n",
+    "library download request"
+)
+
 print("Library UI integration overlay applied.")
