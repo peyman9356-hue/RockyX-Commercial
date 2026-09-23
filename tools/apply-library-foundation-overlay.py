@@ -148,4 +148,38 @@ if count_recent < 1:
     raise SystemExit(f"recent lesson action: expected at least 1 match, found {count_recent}")
 main.write_text(text_main.replace(old_recent, new_recent), encoding="utf-8")
 
+replace_once(
+    main,
+    "    private fun mediaCard(ref: MediaRef, lessonTitle: String, onPlay: (PlayerView) -> Unit): LinearLayout {",
+    "    private fun mediaCard(ref: MediaRef, descriptor: MediaDescriptor, lessonTitle: String, onPlay: (PlayerView) -> Unit): LinearLayout {",
+    "media card descriptor"
+)
+
+replace_once(
+    main,
+    "                mediaEngine?.download(MediaDescriptor(ref.id, ref.type, ref.uri ?: return@button, true, lessonTitle))",
+    "                mediaEngine?.download(descriptor)",
+    "versioned media download"
+)
+
+replace_once(
+    main,
+    """                val descriptor = MediaDescriptor(ref.id, ref.type, uri, ref.downloadable, lesson.title)
+                val card = mediaCard(ref, lesson.title) { playerView ->
+""",
+    """                val chapter = course.chapters.firstOrNull { it.lessons.any { candidate -> candidate.id == lesson.id } }
+                val libraryLesson = chapter?.let { app.library.lesson(course.id, it.id, lesson.id) }
+                val libraryMedia = libraryLesson?.let { version ->
+                    app.library.mediaForLesson(version.id).firstOrNull { asset -> asset.sourceMediaId == ref.id }
+                }
+                if (libraryMedia == null) {
+                    Toast.makeText(this, "رسانه این درس در نسخه فعال Library ثبت نشده است.", Toast.LENGTH_SHORT).show()
+                    return@forEach
+                }
+                val descriptor = MediaDescriptor(libraryMedia.id, libraryMedia.type, libraryMedia.uri, libraryMedia.downloadable, lesson.title)
+                val card = mediaCard(ref, descriptor, lesson.title) { playerView ->
+""",
+    "versioned media lesson mapping"
+)
+
 print("Library UI integration overlay applied.")
