@@ -48,4 +48,23 @@ class TrainingPersistenceGatewayTest {
             }
         }
     }
+    @Test fun failedSupersedeDoesNotConsumeClientEvent() {
+        TrainingPersistenceGateway(context).use { g ->
+            val base = SitEvidence("base","d1","a1","s1","c1",CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
+                ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE)
+            assertTrue(g.appendEvidence(base, "base-canonical"))
+
+            val competing = SitEvidence("e2","d1","a2","s1","c1",CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
+                ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE,supersedesEvidenceId="base")
+            assertTrue(g.appendEvidence(competing, "e2-canonical"))
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendEvidence(competing.copy(evidenceId="e3", clientGeneratedId="e3", supersedesEvidenceId="base"), "e3-canonical")
+            }
+            assertTrue(g.appendEvidence(
+                competing.copy(evidenceId="e3", clientGeneratedId="e3", supersedesEvidenceId=null),
+                "e3-canonical"
+            ))
+        }
+    }
+
 }
