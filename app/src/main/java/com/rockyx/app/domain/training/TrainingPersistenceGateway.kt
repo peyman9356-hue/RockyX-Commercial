@@ -29,6 +29,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
     fun appendAttempt(attempt: TrainingAttempt, canonicalPayload: String): Boolean {
         require(attempt.sessionId.isNotBlank() && attempt.dogId.isNotBlank()) { "INVALID_ATTEMPT_REFERENCE" }
         require(attempt.attemptId.isNotBlank() && attempt.clientGeneratedId.isNotBlank()) { "INVALID_ATTEMPT_IDENTITY" }
+        store.requireImmutableRecord("SESSION", attempt.sessionId)
         return store.appendAttempt(attempt.attemptId, attempt.clientGeneratedId, canonicalPayload, attempt.createdAt)
     }
 
@@ -36,6 +37,8 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         store.acceptClientEvent(clientGeneratedId, canonicalPayload)
 
     fun appendEvidence(evidence: SitEvidence, canonicalPayload: String): Boolean {
+        store.requireImmutableRecord("SESSION", evidence.sessionId)
+        store.requireImmutableRecord("ATTEMPT", evidence.attemptId)
         return store.appendEventAndImmutableRecord(
             eventId = evidence.clientGeneratedId,
             recordType = "EVIDENCE",
@@ -47,6 +50,9 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
     }
 
     fun appendEvaluation(evaluation: Evaluation, canonicalPayload: String): Boolean {
+        store.requireImmutableRecord("SESSION", evaluation.sessionId)
+        evaluation.attemptIds.forEach { store.requireImmutableRecord("ATTEMPT", it) }
+        evaluation.evidenceIds.forEach { store.requireImmutableRecord("EVIDENCE", it) }
         return store.appendEventAndImmutableRecord(
             eventId = evaluation.evaluationId,
             recordType = "EVALUATION",
