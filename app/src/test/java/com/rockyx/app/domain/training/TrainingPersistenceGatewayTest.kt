@@ -49,6 +49,8 @@ class TrainingPersistenceGatewayTest {
 
     @Test fun eventIdempotencyAndImmutableEvaluationAreEnforcedThroughGateway() {
         TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SIT","1","VALID"), PolicyVersion("SIT_POLICY","1","VALID"))
+            assertTrue(g.appendSession(TrainingSession("s1","d1","sit","c1",emptyList(),ruleVersionId="SIT:1",policyVersionId="SIT_POLICY:1"), "session-eval"))
             assertTrue(g.appendEvaluation(
                 Evaluation("ev1","s1",emptyList(),emptyList(),EvaluationResult.UNKNOWN,Sufficiency.INSUFFICIENT,
                     EvaluationStatus.INSUFFICIENT,ConfidenceTier.LOW,"SIT:1","SIT_POLICY:1"),
@@ -70,6 +72,11 @@ class TrainingPersistenceGatewayTest {
     }
     @Test fun failedSupersedeDoesNotConsumeClientEvent() {
         TrainingPersistenceGateway(context).use { g ->
+            val session = TrainingSession("s1","d1","sit","c1",emptyList(),ruleVersionId="SIT:1",policyVersionId="SIT_POLICY:1")
+            g.register(RuleVersion("SIT","1","VALID"), PolicyVersion("SIT_POLICY","1","VALID"))
+            assertTrue(g.appendSession(session, "session-base"))
+            val attempt = TrainingAttempt("a1","s1",1,emptyList(),"d1",1L,"attempt-a1")
+            assertTrue(g.appendAttempt(attempt, "attempt-a1"))
             val base = SitEvidence("base","d1","a1","s1","c1",CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
                 ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE)
             assertTrue(g.appendEvidence(base, "base-canonical"))
@@ -81,7 +88,7 @@ class TrainingPersistenceGatewayTest {
                 g.appendEvidence(competing.copy(evidenceId="e3", clientGeneratedId="e3", supersedesEvidenceId="base"), "e3-canonical")
             }
             assertTrue(g.appendEvidence(
-                competing.copy(evidenceId="e3", clientGeneratedId="e3", supersedesEvidenceId=null),
+                competing.copy(evidenceId="e3", attemptId="a1", clientGeneratedId="e3", supersedesEvidenceId=null),
                 "e3-canonical"
             ))
         }
