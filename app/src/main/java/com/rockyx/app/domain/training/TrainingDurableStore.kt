@@ -79,6 +79,38 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             put("payload_hash", sha256(canonicalPayload)); put("payload", canonicalPayload); put("created_at", createdAt)
         })
     }
+    fun appendEventAndImmutableRecord(eventId: String, recordType: String, recordId: String, canonicalPayload: String, createdAt: Long, supersedesEvidenceId: String? = null): Boolean {
+        require(eventId.isNotBlank() && recordType.isNotBlank() && recordId.isNotBlank())
+        val hash = sha256(canonicalPayload)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.query("client_events", arrayOf("content_hash"), "client_generated_id=?", arrayOf(eventId), null, null, null).use {
+                if (it.moveToFirst()) {
+                    require(it.getString(0) == hash) { "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:$eventId" }
+                    return false
+                }
+            }
+            if (recordType == "EVIDENCE" && supersedesEvidenceId != null) {
+                val exists = db.query("immutable_records", arrayOf("record_id"), "record_type='EVIDENCE' AND record_id=?", arrayOf(supersedesEvidenceId), null, null, null).use { it.moveToFirst() }
+                require(exists) { "Superseded evidence must already exist." }
+                val successorExists = db.query("evidence_successors", arrayOf("child_id"), "parent_id=?", arrayOf(supersedesEvidenceId), null, null, null).use { it.moveToFirst() }
+                require(!successorExists) { "CONCURRENT_SUPERSEDE:$supersedesEvidenceId" }
+                db.insertOrThrow("evidence_successors", null, ContentValues().apply {
+                    put("parent_id", supersedesEvidenceId); put("child_id", recordId)
+                })
+            }
+            db.insertOrThrow("client_events", null, ContentValues().apply {
+                put("client_generated_id", eventId); put("content_hash", hash)
+            })
+            db.insertOrThrow("immutable_records", null, ContentValues().apply {
+                put("record_type", recordType); put("record_id", recordId)
+                put("payload_hash", hash); put("payload", canonicalPayload); put("created_at", createdAt)
+            })
+            db.setTransactionSuccessful()
+            return true
+        } finally { db.endTransaction() }
+    }
 
     fun appendEvidence(evidenceId: String, canonicalPayload: String, createdAt: Long, supersedesEvidenceId: String? = null) {
         val db = writableDatabase
