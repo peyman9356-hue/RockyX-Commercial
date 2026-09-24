@@ -2,19 +2,6 @@ from pathlib import Path
 
 root = Path("rockyx-src/rev14src")
 
-
-replace_once(
-    models,
-    "data class MediaRef(val id: String, val type: ContentType, val uri: String? = null, val downloadable: Boolean = false, val thumbnailUri: String? = null)",
-    "data class MediaRef(val id: String, val type: ContentType, val uri: String? = null, val downloadable: Boolean = false, val thumbnailUri: String? = null, val sha256: String? = null, val sizeBytes: Long? = null)",
-    "MediaRef integrity fields"
-)
-replace_once(
-    content_system,
-    "add(MediaRef(m.getString(\"id\"), ContentType.valueOf(m.getString(\"type\")), m.optString(\"uri\").takeIf { it.isNotBlank() }, m.optBoolean(\"downloadable\"), m.optString(\"thumbnailUri\").takeIf { it.isNotBlank() }))",
-    "add(MediaRef(m.getString(\"id\"), ContentType.valueOf(m.getString(\"type\")), m.optString(\"uri\").takeIf { it.isNotBlank() }, m.optBoolean(\"downloadable\"), m.optString(\"thumbnailUri\").takeIf { it.isNotBlank() }, m.optString(\"sha256\").takeIf { it.isNotBlank() }, m.optLong(\"sizeBytes\").takeIf { it > 0L }))",
-    "MediaRef integrity parsing"
-)
 main = root / "app/src/main/java/com/rockyx/app/MainActivity.kt"
 controller = root / "app/src/main/java/com/rockyx/app/ui/AppController.kt"
 
@@ -28,6 +15,19 @@ def replace_once(path, old, new, name):
 # Extend the archived content model so media integrity metadata has one canonical source.
 models = root / "app/src/main/java/com/rockyx/app/domain/model/Models.kt"
 content_system = root / "app/src/main/java/com/rockyx/app/data/content/ContentSystem.kt"
+
+replace_once(
+    models,
+    "data class MediaRef(val id: String, val type: ContentType, val uri: String? = null, val downloadable: Boolean = false, val thumbnailUri: String? = null)",
+    "data class MediaRef(val id: String, val type: ContentType, val uri: String? = null, val downloadable: Boolean = false, val thumbnailUri: String? = null, val sha256: String? = null, val sizeBytes: Long? = null)",
+    "MediaRef integrity fields"
+)
+replace_once(
+    content_system,
+    "add(MediaRef(m.getString(\"id\"), ContentType.valueOf(m.getString(\"type\")), m.optString(\"uri\").takeIf { it.isNotBlank() }, m.optBoolean(\"downloadable\"), m.optString(\"thumbnailUri\").takeIf { it.isNotBlank() }))",
+    "add(MediaRef(m.getString(\"id\"), ContentType.valueOf(m.getString(\"type\")), m.optString(\"uri\").takeIf { it.isNotBlank() }, m.optBoolean(\"downloadable\"), m.optString(\"thumbnailUri\").takeIf { it.isNotBlank() }, m.optString(\"sha256\").takeIf { it.isNotBlank() }, m.optLong(\"sizeBytes\").takeIf { it > 0L }))",
+    "MediaRef integrity parsing"
+)
 
 replace_once(
     controller,
