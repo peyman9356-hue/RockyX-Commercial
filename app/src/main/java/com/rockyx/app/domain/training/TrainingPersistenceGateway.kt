@@ -17,6 +17,21 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         return rule to policy
     }
 
+    fun appendSession(session: TrainingSession, canonicalPayload: String): Boolean {
+        validatePinnedSession(session)
+        TrainingValidation.validateSession(session).also { errors ->
+            require(errors.isEmpty()) { "INVALID_SESSION:" + errors.joinToString(",") }
+        }
+        store.appendSession(session.sessionId, canonicalPayload, session.createdAt)
+        return true
+    }
+
+    fun appendAttempt(attempt: TrainingAttempt, canonicalPayload: String): Boolean {
+        require(attempt.sessionId.isNotBlank() && attempt.dogId.isNotBlank()) { "INVALID_ATTEMPT_REFERENCE" }
+        require(attempt.attemptId.isNotBlank() && attempt.clientGeneratedId.isNotBlank()) { "INVALID_ATTEMPT_IDENTITY" }
+        return store.appendAttempt(attempt.attemptId, attempt.clientGeneratedId, canonicalPayload, attempt.createdAt)
+    }
+
     fun acceptEvent(clientGeneratedId: String, canonicalPayload: String): Boolean =
         store.acceptClientEvent(clientGeneratedId, canonicalPayload)
 
