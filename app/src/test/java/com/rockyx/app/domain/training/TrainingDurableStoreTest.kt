@@ -1,7 +1,7 @@
 package com.rockyx.app.domain.training
 
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
+import org.robolectric.RuntimeEnvironment
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -13,7 +13,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class TrainingDurableStoreTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val context: Context = RuntimeEnvironment.getApplication()
     private val dbFile: File = context.getDatabasePath("rockyx_training.db")
 
     @After fun cleanup() {
