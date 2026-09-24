@@ -16,7 +16,7 @@ class LibraryCatalogTest {
     @Test
     fun builderCreatesLocaleAndVersionScopedImmutableIds() {
         val manifest = ContentManifest(1, "1.0.0", "fa")
-        val media = MediaRef("sit-video", ContentType.VIDEO, "https://example.test/sit.m3u8", true)
+        val media = MediaRef("sit-video", ContentType.VIDEO, "https://example.test/sit.m3u8", true, sha256 = "a".repeat(64), sizeBytes = 1024L)
         val courses = listOf(
             Course("beginner", "Beginner", "", Access.FREE, false, listOf(
                 Chapter("foundation", "Foundation", listOf(
