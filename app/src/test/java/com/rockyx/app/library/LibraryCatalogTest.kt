@@ -55,4 +55,37 @@ class LibraryCatalogTest {
         assertTrue(fa.version.key != en.version.key)
         assertTrue(fa.lessons.single().id != en.lessons.single().id)
     }
+
+    @Test
+    fun validatorRejectsMalformedSha256() {
+        val version = LibraryContentVersion(1, "1.0.0", "fa", "0".repeat(64))
+        val snapshot = LibrarySnapshot(
+            version,
+            emptyList(),
+            listOf(LibraryMediaAsset("media", "source", "lesson", ContentType.VIDEO, "u", null, true, "ABC", 1024L))
+        )
+        assertThrows(IllegalArgumentException::class.java) { LibraryValidator.validate(snapshot) }
+    }
+
+    @Test
+    fun validatorRejectsNonPositiveMediaSize() {
+        val version = LibraryContentVersion(1, "1.0.0", "fa", "0".repeat(64))
+        val snapshot = LibrarySnapshot(
+            version,
+            emptyList(),
+            listOf(LibraryMediaAsset("media", "source", "lesson", ContentType.VIDEO, "u", null, true, "a".repeat(64), 0L))
+        )
+        assertThrows(IllegalArgumentException::class.java) { LibraryValidator.validate(snapshot) }
+    }
+
+    @Test
+    fun validatorRequiresIntegrityMetadataForDownloadableMedia() {
+        val version = LibraryContentVersion(1, "1.0.0", "fa", "0".repeat(64))
+        val snapshot = LibrarySnapshot(
+            version,
+            emptyList(),
+            listOf(LibraryMediaAsset("media", "source", "lesson", ContentType.VIDEO, "u", null, true, null, null))
+        )
+        assertThrows(IllegalArgumentException::class.java) { LibraryValidator.validate(snapshot) }
+    }
 }
