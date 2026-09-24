@@ -72,6 +72,20 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         return true
     }
 
+    fun appendSession(sessionId: String, canonicalPayload: String, createdAt: Long) {
+        appendImmutable("SESSION", sessionId, canonicalPayload, createdAt)
+    }
+
+    fun appendAttempt(attemptId: String, clientGeneratedId: String, canonicalPayload: String, createdAt: Long): Boolean {
+        return appendEventAndImmutableRecord(
+            eventId = clientGeneratedId,
+            recordType = "ATTEMPT",
+            recordId = attemptId,
+            canonicalPayload = canonicalPayload,
+            createdAt = createdAt
+        )
+    }
+
     fun appendImmutable(recordType: String, recordId: String, canonicalPayload: String, createdAt: Long) {
         require(recordType.isNotBlank() && recordId.isNotBlank())
         writableDatabase.insertOrThrow("immutable_records", null, ContentValues().apply {
