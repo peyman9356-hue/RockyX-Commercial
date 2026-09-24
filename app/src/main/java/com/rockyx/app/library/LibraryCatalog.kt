@@ -67,7 +67,9 @@ object LibraryCatalogBuilder {
                                         type = ref.type,
                                         uri = uri,
                                         thumbnailUri = ref.thumbnailUri,
-                                        downloadable = ref.downloadable
+                                        downloadable = ref.downloadable,
+                                        sha256 = ref.sha256,
+                                        sizeBytes = ref.sizeBytes
                                     )
                                 )
                             }
