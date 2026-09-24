@@ -64,6 +64,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
 
     fun appendDecision(decision: Decision, canonicalPayload: String): Boolean {
         require(decision.basisEvaluationIds == decision.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
+        decision.basisEvaluationIds.forEach { store.requireImmutableRecord("EVALUATION", it) }
         return store.appendEventAndImmutableRecord(
             eventId = decision.decisionId,
             recordType = "DECISION",
