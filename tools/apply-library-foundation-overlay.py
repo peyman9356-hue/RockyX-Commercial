@@ -2,9 +2,7 @@ from pathlib import Path
 
 root = Path("rockyx-src/rev14src")
 
-# Extend the archived content model so media integrity metadata has one canonical source.
-models = root / "app/src/main/java/com/rockyx/app/domain/model/Models.kt"
-content_system = root / "app/src/main/java/com/rockyx/app/data/content/ContentSystem.kt"
+
 replace_once(
     models,
     "data class MediaRef(val id: String, val type: ContentType, val uri: String? = null, val downloadable: Boolean = false, val thumbnailUri: String? = null)",
@@ -26,6 +24,10 @@ def replace_once(path, old, new, name):
     if count != 1:
         raise SystemExit(f"{name}: expected 1 match, found {count}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+# Extend the archived content model so media integrity metadata has one canonical source.
+models = root / "app/src/main/java/com/rockyx/app/domain/model/Models.kt"
+content_system = root / "app/src/main/java/com/rockyx/app/data/content/ContentSystem.kt"
 
 replace_once(
     controller,
