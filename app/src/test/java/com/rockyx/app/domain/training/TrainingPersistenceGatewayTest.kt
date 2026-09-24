@@ -27,6 +27,26 @@ class TrainingPersistenceGatewayTest {
         }
     }
 
+    @Test fun sessionAndAttemptAreDurableAndAttemptEventIsIdempotent() {
+        TrainingPersistenceGateway(context).use { g ->
+            val session = TrainingSession(
+                sessionId="s-durable", dogId="d1", skillId="sit", contextId="c1", attempts=emptyList(),
+                ruleVersionId="SIT:1", policyVersionId="SIT_POLICY:1", createdAt=10L
+            )
+            g.register(RuleVersion("SIT", "1", "VALID"), PolicyVersion("SIT_POLICY", "1", "VALID"))
+            assertTrue(g.appendSession(session, "session-canonical"))
+            assertEquals("session-canonical", TrainingDurableStore(context).use { it.readImmutable("SESSION", "s-durable") })
+
+            val attempt = TrainingAttempt("a-durable", "s-durable", 1, emptyList(), "d1", 11L, "attempt-event-1")
+            assertTrue(g.appendAttempt(attempt, "attempt-canonical"))
+            assertFalse(g.appendAttempt(attempt, "attempt-canonical"))
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendAttempt(attempt.copy(clientGeneratedId="attempt-event-2"), "different-attempt")
+            }
+            assertEquals("attempt-canonical", TrainingDurableStore(context).use { it.readImmutable("ATTEMPT", "a-durable") })
+        }
+    }
+
     @Test fun eventIdempotencyAndImmutableEvaluationAreEnforcedThroughGateway() {
         TrainingPersistenceGateway(context).use { g ->
             assertTrue(g.appendEvaluation(
