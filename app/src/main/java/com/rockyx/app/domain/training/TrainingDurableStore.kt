@@ -147,6 +147,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         } finally { db.endTransaction() }
     }
 
+    fun requireImmutableRecord(recordType: String, recordId: String) {
+        require(recordType.isNotBlank() && recordId.isNotBlank())
+        val exists = readableDatabase.query("immutable_records", arrayOf("record_id"), "record_type=? AND record_id=?", arrayOf(recordType, recordId), null, null, null).use { it.moveToFirst() }
+        require(exists) { "UNKNOWN_IMMUTABLE_RECORD:$recordType:$recordId" }
+    }
+
     fun readImmutable(recordType: String, recordId: String): String? =
         readableDatabase.query("immutable_records", arrayOf("payload"), "record_type=? AND record_id=?", arrayOf(recordType, recordId), null, null, null).use {
             if (it.moveToFirst()) it.getString(0) else null
