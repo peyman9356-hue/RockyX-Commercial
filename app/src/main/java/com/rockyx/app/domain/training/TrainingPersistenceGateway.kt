@@ -21,25 +21,35 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         store.acceptClientEvent(clientGeneratedId, canonicalPayload)
 
     fun appendEvidence(evidence: SitEvidence, canonicalPayload: String): Boolean {
-        val accepted = acceptEvent(evidence.clientGeneratedId, canonicalPayload)
-        if (!accepted) return false
-        store.appendEvidence(evidence.evidenceId, canonicalPayload, System.currentTimeMillis(), evidence.supersedesEvidenceId)
-        return true
+        return store.appendEventAndImmutableRecord(
+            eventId = evidence.clientGeneratedId,
+            recordType = "EVIDENCE",
+            recordId = evidence.evidenceId,
+            canonicalPayload = canonicalPayload,
+            createdAt = System.currentTimeMillis(),
+            supersedesEvidenceId = evidence.supersedesEvidenceId
+        )
     }
 
     fun appendEvaluation(evaluation: Evaluation, canonicalPayload: String): Boolean {
-        val accepted = acceptEvent(evaluation.evaluationId, canonicalPayload)
-        if (!accepted) return false
-        store.appendImmutable("EVALUATION", evaluation.evaluationId, canonicalPayload, evaluation.createdAt)
-        return true
+        return store.appendEventAndImmutableRecord(
+            eventId = evaluation.evaluationId,
+            recordType = "EVALUATION",
+            recordId = evaluation.evaluationId,
+            canonicalPayload = canonicalPayload,
+            createdAt = evaluation.createdAt
+        )
     }
 
     fun appendDecision(decision: Decision, canonicalPayload: String): Boolean {
-        val accepted = acceptEvent(decision.decisionId, canonicalPayload)
-        if (!accepted) return false
         require(decision.basisEvaluationIds == decision.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
-        store.appendImmutable("DECISION", decision.decisionId, canonicalPayload, decision.createdAt)
-        return true
+        return store.appendEventAndImmutableRecord(
+            eventId = decision.decisionId,
+            recordType = "DECISION",
+            recordId = decision.decisionId,
+            canonicalPayload = canonicalPayload,
+            createdAt = decision.createdAt
+        )
     }
 
     override fun close() { store.close() }
