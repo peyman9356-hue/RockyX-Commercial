@@ -50,9 +50,7 @@ object LibraryCatalogBuilder {
                                     type = ref.type,
                                     uri = uri,
                                     thumbnailUri = ref.thumbnailUri,
-                                    downloadable = ref.downloadable,
-                                    sha256 = ref.sha256,
-                                    sizeBytes = ref.sizeBytes
+                                    downloadable = ref.downloadable
                                 )
                             )
                         }
@@ -139,14 +137,5 @@ object LibraryValidator {
         require(snapshot.media.all { it.sizeBytes == null || it.sizeBytes > 0L }) {
             "Media sizeBytes must be positive when present"
         }
-        require(snapshot.media.all {
-            !it.downloadable || (
-                it.uri.isNotBlank() &&
-                it.sha256 != null &&
-                it.sha256.matches(Regex("^[0-9a-f]{64}$")) &&
-                it.sizeBytes != null &&
-                it.sizeBytes > 0L
-            )
-        }) { "Downloadable media requires URI, SHA-256, and positive sizeBytes" }
     }
 }
