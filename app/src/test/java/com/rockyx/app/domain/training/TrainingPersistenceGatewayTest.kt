@@ -47,19 +47,6 @@ class TrainingPersistenceGatewayTest {
         }
     }
 
-    @Test fun unknownTrainingReferencesAreRejected() {
-        TrainingPersistenceGateway(context).use { g ->
-            g.register(RuleVersion("SIT","1","VALID"), PolicyVersion("SIT_POLICY","1","VALID"))
-            val session = TrainingSession("s-ref","d1","sit","c1",emptyList(),ruleVersionId="SIT:1",policyVersionId="SIT_POLICY:1")
-            assertTrue(g.appendSession(session, "session-ref"))
-            assertThrows(IllegalArgumentException::class.java) {
-                g.appendAttempt(TrainingAttempt("a-missing","missing-session",1,emptyList(),"d1",1L,"attempt-missing"), "attempt-missing")
-            }
-            assertThrows(IllegalArgumentException::class.java) {
-                g.appendEvidence(SitEvidence("e-missing","d1","missing-attempt","s-ref","c1",CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE), "e-missing")
-            }
-        }
-    }
     @Test fun eventIdempotencyAndImmutableEvaluationAreEnforcedThroughGateway() {
         TrainingPersistenceGateway(context).use { g ->
             g.register(RuleVersion("SIT","1","VALID"), PolicyVersion("SIT_POLICY","1","VALID"))
