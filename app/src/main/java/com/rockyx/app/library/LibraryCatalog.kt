@@ -50,7 +50,9 @@ object LibraryCatalogBuilder {
                                     type = ref.type,
                                     uri = uri,
                                     thumbnailUri = ref.thumbnailUri,
-                                    downloadable = ref.downloadable
+                                    downloadable = ref.downloadable,
+                                    sha256 = ref.sha256,
+                                    sizeBytes = ref.sizeBytes
                                 )
                             )
                         }
@@ -136,6 +138,9 @@ object LibraryValidator {
         }
         require(snapshot.media.all { it.sizeBytes == null || it.sizeBytes > 0L }) {
             "Media sizeBytes must be positive when present"
+        }
+        require(snapshot.media.all { !it.downloadable || (it.sha256 != null && it.sizeBytes != null) }) {
+            "Downloadable media requires integrity metadata"
         }
     }
 }
