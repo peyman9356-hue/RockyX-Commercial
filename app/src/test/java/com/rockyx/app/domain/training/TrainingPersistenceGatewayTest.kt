@@ -41,7 +41,7 @@ class TrainingPersistenceGatewayTest {
             assertTrue(g.appendAttempt(attempt, "attempt-canonical"))
             assertFalse(g.appendAttempt(attempt, "attempt-canonical"))
             assertThrows(IllegalArgumentException::class.java) {
-                g.appendAttempt(attempt.copy(clientGeneratedId="attempt-event-2"), "different-attempt")
+                g.appendAttempt(attempt, "different-attempt")
             }
             assertEquals("attempt-canonical", TrainingDurableStore(context).use { it.readImmutable("ATTEMPT", "a-durable") })
         }
