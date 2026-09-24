@@ -103,6 +103,7 @@ jobs:
           mkdir -p "$TRAIN_TEST_DST"
           cp "$TRAIN_TEST_SRC"/*.kt "$TRAIN_TEST_DST"/
           test -s "$TRAIN_TEST_DST/TrainingDurableStoreTest.kt"
+          test -s "$TRAIN_TEST_DST/TrainingPersistenceGatewayTest.kt"
 
           echo "Gate 1 + Library tracked source overlay verified: ${#required[@]} training files + 4 library files + library tests"
 
