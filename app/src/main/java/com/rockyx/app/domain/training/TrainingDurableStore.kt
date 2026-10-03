@@ -19,6 +19,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
 
     fun registerRule(version: RuleVersion) {
+        validateVersion(version.version)
         writableDatabase.insertOrThrow("rule_versions", null, ContentValues().apply {
             put("rule_id", version.ruleId); put("version", version.version)
             put("status", version.status); put("definition", version.definition)
@@ -26,6 +27,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
     }
 
     fun registerPolicy(version: PolicyVersion) {
+        validateVersion(version.version)
         writableDatabase.insertOrThrow("policy_versions", null, ContentValues().apply {
             put("policy_id", version.policyId); put("version", version.version)
             put("status", version.status); put("definition", version.definition)
@@ -197,6 +199,16 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         readableDatabase.query("immutable_records", arrayOf("payload"), "record_type=? AND record_id=?", arrayOf(recordType, recordId), null, null, null).use {
             if (it.moveToFirst()) it.getString(0) else null
         }
+
+    /**
+     * Training version ordering is numeric-dotted only.
+     * This keeps "latest" deterministic and avoids lexicographic errors such as 10 < 2.
+     */
+    private fun validateVersion(version: String) {
+        require(version.matches(Regex("(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*))*"))) {
+            "INVALID_VERSION_FORMAT:$version"
+        }
+    }
 
     private fun compareVersion(left: String, right: String): Int {
         val l = left.split(".")
