@@ -110,6 +110,23 @@ class TrainingPersistenceGatewayTest {
 
 
 
+    
+    @Test fun offlinePinningUsesNumericVersionOrderingAndRejectsAmbiguousVersions() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("ORDER", "2", "VALID"), PolicyVersion("ORDER_POLICY", "2", "VALID"))
+            g.register(RuleVersion("ORDER", "10", "VALID"), PolicyVersion("ORDER_POLICY", "10", "VALID"))
+            assertEquals("ORDER:10", g.resolveOfflinePins("ORDER", "ORDER_POLICY").first)
+            assertEquals("ORDER_POLICY:10", g.resolveOfflinePins("ORDER", "ORDER_POLICY").second)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                g.register(RuleVersion("ORDER", "1-beta", "VALID"), PolicyVersion("ORDER_POLICY", "1-beta", "VALID"))
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                g.register(RuleVersion("ORDER", "01", "VALID"), PolicyVersion("ORDER_POLICY", "01", "VALID"))
+            }
+        }
+    }
+
     @Test fun offlinePinningSelectsNewestValidLocalVersionsAndKeepsExistingSessionExact() {
         TrainingPersistenceGateway(context).use { g ->
             g.register(RuleVersion("SIT", "1", "VALID"), PolicyVersion("SIT_POLICY", "1", "VALID"))
