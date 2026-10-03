@@ -23,3 +23,44 @@ data class Assessment(val dogId:String,val skillId:String,val latestEvaluationId
 object AssessmentProjector{fun project(dogId:String,skillId:String,evaluations:List<Evaluation>,decisions:List<Decision>):Assessment{val e=evaluations.filter{it.sessionId.isNotBlank()}.lastOrNull();return Assessment(dogId,skillId,e?.evaluationId,decisions.lastOrNull()?.decisionId)}}
 object DecisionValidation{fun validate(d:Decision,evaluations:Collection<Evaluation>): List<String> =buildList{if(d.basisEvaluationIds!=d.basisEvaluationIds.sorted())add("BASIS_EVALUATION_IDS_NOT_SORTED");val known=evaluations.map{it.evaluationId}.toSet();d.basisEvaluationIds.filterNot{it in known}.forEach{add("UNKNOWN_BASIS_EVALUATION:"+it)};evaluations.filter{it.evaluationId in d.basisEvaluationIds}.filter{it.policyVersionId!=d.policyVersionId}.forEach{add("BASIS_POLICY_VERSION_MISMATCH:"+it.evaluationId)}}}
 object HistoricalVersionGuard{fun validate(e:Evaluation,registry:TrainingVersionRegistry){registry.requireRule(e.ruleVersionId);registry.requirePolicy(e.policyVersionId)}}
+
+
+data class TrainingSyncEvent(
+    val clientGeneratedId: String,
+    val recordType: String,
+    val recordId: String,
+    val canonicalPayload: String,
+    val ruleVersionId: String,
+    val policyVersionId: String
+)
+data class TrainingSyncEnvelope(
+    val sessionId: String,
+    val dogId: String,
+    val ruleVersionId: String,
+    val policyVersionId: String,
+    val events: List<TrainingSyncEvent>
+)
+
+enum class SyncRejectionCode { EMPTY_SESSION, INVALID_SESSION, VERSION_MISMATCH, EMPTY_EVENT_ID, EVENT_VERSION_MISMATCH }
+
+data class SyncValidationResult(val accepted: Boolean, val rejections: List<SyncRejectionCode>)
+
+object TrainingSyncValidator {
+    fun validate(envelope: TrainingSyncEnvelope, session: TrainingSession, registry: TrainingVersionRegistry): SyncValidationResult {
+        val errors = buildList {
+            if (envelope.sessionId.isBlank() || envelope.dogId.isBlank()) add(SyncRejectionCode.EMPTY_SESSION)
+            try { registry.requireExactPins(session) } catch (_: IllegalArgumentException) { add(SyncRejectionCode.INVALID_SESSION) }
+            if (envelope.sessionId != session.sessionId || envelope.dogId != session.dogId ||
+                envelope.ruleVersionId != session.ruleVersionId || envelope.policyVersionId != session.policyVersionId) {
+                add(SyncRejectionCode.VERSION_MISMATCH)
+            }
+            envelope.events.forEach { event ->
+                if (event.clientGeneratedId.isBlank()) add(SyncRejectionCode.EMPTY_EVENT_ID)
+                if (event.ruleVersionId != session.ruleVersionId || event.policyVersionId != session.policyVersionId) {
+                    add(SyncRejectionCode.EVENT_VERSION_MISMATCH)
+                }
+            }
+        }
+        return SyncValidationResult(errors.isEmpty(), errors.distinct())
+    }
+}
