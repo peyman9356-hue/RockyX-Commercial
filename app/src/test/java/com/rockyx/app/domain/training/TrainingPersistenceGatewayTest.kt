@@ -162,4 +162,37 @@ class TrainingPersistenceGatewayTest {
         }
     }
 
+
+    @Test fun syncValidatorAcceptsExactSessionPinsAndRejectsMismatchedEventPins() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-s1","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(listOf(RuleVersion("SYNC","1","VALID")), listOf(PolicyVersion("SYNC_POLICY","1","VALID")))
+            val valid = TrainingSyncEnvelope("sync-s1","d1","SYNC:1","SYNC_POLICY:1",listOf(
+                TrainingSyncEvent("evt-1","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1")
+            ))
+            assertTrue(TrainingSyncValidator.validate(valid,session,registry).accepted)
+            val bad = valid.copy(events=listOf(valid.events.first().copy(ruleVersionId="SYNC:2")))
+            val result = TrainingSyncValidator.validate(bad,session,registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.contains(SyncRejectionCode.EVENT_VERSION_MISMATCH))
+        }
+    }
+
+    @Test fun syncValidatorRejectsEnvelopeThatTriesToRemapAnExistingSession() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            g.register(RuleVersion("SYNC","2","VALID"), PolicyVersion("SYNC_POLICY","2","VALID"))
+            val session = TrainingSession("sync-s2","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID"),RuleVersion("SYNC","2","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"),PolicyVersion("SYNC_POLICY","2","VALID"))
+            )
+            val remapped = TrainingSyncEnvelope("sync-s2","d1","SYNC:2","SYNC_POLICY:2",emptyList())
+            val result = TrainingSyncValidator.validate(remapped,session,registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.contains(SyncRejectionCode.VERSION_MISMATCH))
+        }
+    }
+
 }
