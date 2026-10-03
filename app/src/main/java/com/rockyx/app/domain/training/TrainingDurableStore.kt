@@ -32,6 +32,26 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         })
     }
 
+    /**
+     * Resolves the newest VALID version currently cached locally.
+     * This is used only when creating a new offline session; once the returned
+     * exact ID is pinned into a session, validation remains exact and immutable.
+     */
+    fun requireLatestValidRule(ruleId: String): RuleVersion {
+        require(ruleId.isNotBlank()) { "RULE_ID_REQUIRED" }
+        return readableDatabase.query(
+            "rule_versions", arrayOf("rule_id", "version", "status", "definition"),
+            "rule_id=? AND status='VALID'", arrayOf(ruleId), null, null, null
+        ).use { cursor ->
+            var selected: RuleVersion? = null
+            while (cursor.moveToNext()) {
+                val candidate = RuleVersion(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3))
+                if (selected == null || compareVersion(candidate.version, selected!!.version) > 0) selected = candidate
+            }
+            requireNotNull(selected) { "No valid locally cached RuleVersion: $ruleId" }
+        }
+    }
+
     fun requireRule(exactId: String): RuleVersion {
         val parts = exactId.split(":", limit = 2)
         require(parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) { "RULE_PIN_MUST_BE_EXACT" }
@@ -41,6 +61,26 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ).use {
             require(it.moveToFirst()) { "Unknown or invalid RuleVersion: $exactId" }
             return RuleVersion(it.getString(0), it.getString(1), it.getString(2), it.getString(3))
+        }
+    }
+
+    /**
+     * Resolves the newest VALID version currently cached locally.
+     * This is used only when creating a new offline session; once the returned
+     * exact ID is pinned into a session, validation remains exact and immutable.
+     */
+    fun requireLatestValidPolicy(policyId: String): PolicyVersion {
+        require(policyId.isNotBlank()) { "POLICY_ID_REQUIRED" }
+        return readableDatabase.query(
+            "policy_versions", arrayOf("policy_id", "version", "status", "definition"),
+            "policy_id=? AND status='VALID'", arrayOf(policyId), null, null, null
+        ).use { cursor ->
+            var selected: PolicyVersion? = null
+            while (cursor.moveToNext()) {
+                val candidate = PolicyVersion(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3))
+                if (selected == null || compareVersion(candidate.version, selected!!.version) > 0) selected = candidate
+            }
+            requireNotNull(selected) { "No valid locally cached PolicyVersion: $policyId" }
         }
     }
 
@@ -157,6 +197,21 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         readableDatabase.query("immutable_records", arrayOf("payload"), "record_type=? AND record_id=?", arrayOf(recordType, recordId), null, null, null).use {
             if (it.moveToFirst()) it.getString(0) else null
         }
+
+    private fun compareVersion(left: String, right: String): Int {
+        val l = left.split(".")
+        val r = right.split(".")
+        val count = maxOf(l.size, r.size)
+        for (i in 0 until count) {
+            val lc = l.getOrNull(i) ?: "0"
+            val rc = r.getOrNull(i) ?: "0"
+            val ln = lc.toLongOrNull()
+            val rn = rc.toLongOrNull()
+            val cmp = if (ln != null && rn != null) ln.compareTo(rn) else lc.compareTo(rc)
+            if (cmp != 0) return cmp
+        }
+        return 0
+    }
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
