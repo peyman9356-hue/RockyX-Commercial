@@ -108,4 +108,41 @@ class TrainingPersistenceGatewayTest {
         }
     }
 
+
+
+    @Test fun offlinePinningSelectsNewestValidLocalVersionsAndKeepsExistingSessionExact() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SIT", "1", "VALID"), PolicyVersion("SIT_POLICY", "1", "VALID"))
+            g.register(RuleVersion("SIT", "2", "VALID"), PolicyVersion("SIT_POLICY", "2", "VALID"))
+
+            val pins = g.resolveOfflinePins("SIT", "SIT_POLICY")
+            assertEquals("SIT:2", pins.first)
+            assertEquals("SIT_POLICY:2", pins.second)
+
+            val session = TrainingSession(
+                "offline-s1", "d1", "sit", "c1", emptyList(),
+                ruleVersionId=pins.first, policyVersionId=pins.second
+            )
+            assertEquals("2", g.validatePinnedSession(session).first.version)
+
+            g.register(RuleVersion("SIT", "3", "VALID"), PolicyVersion("SIT_POLICY", "3", "VALID"))
+            assertEquals("2", g.validatePinnedSession(session).first.version)
+            assertEquals("SIT_POLICY:2", g.validatePinnedSession(session).second.policyVersionId)
+        }
+    }
+
+    @Test fun offlinePinningIgnoresInvalidNewestAndRejectsMissingValidCache() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SIT", "1", "VALID"), PolicyVersion("SIT_POLICY", "1", "VALID"))
+            g.register(RuleVersion("SIT", "2", "INVALID"), PolicyVersion("SIT_POLICY", "2", "INVALID"))
+
+            assertEquals("SIT:1", g.resolveOfflinePins("SIT", "SIT_POLICY").first)
+            assertEquals("SIT_POLICY:1", g.resolveOfflinePins("SIT", "SIT_POLICY").second)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                g.resolveOfflinePins("DOWN", "SIT_POLICY")
+            }
+        }
+    }
+
 }
