@@ -10,6 +10,18 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         store.registerPolicy(policy)
     }
 
+    /**
+     * Offline session creation pinning boundary.
+     * Resolves the newest valid locally cached versions once and returns their
+     * exact IDs. Callers must persist these IDs in TrainingSession and must not
+     * replace them with a later/latest version during sync.
+     */
+    fun resolveOfflinePins(ruleId: String, policyId: String): Pair<String, String> {
+        val rule = store.requireLatestValidRule(ruleId)
+        val policy = store.requireLatestValidPolicy(policyId)
+        return "${rule.ruleId}:${rule.version}" to policy.policyVersionId
+    }
+
     fun validatePinnedSession(session: TrainingSession): Pair<RuleVersion, PolicyVersion> {
         val rule = store.requireRule(session.ruleVersionId)
         val policy = store.requirePolicy(session.policyVersionId)
