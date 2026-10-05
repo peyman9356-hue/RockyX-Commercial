@@ -86,5 +86,16 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         )
     }
 
+    /**
+     * Server-side sync ingestion boundary. Validation happens before durable
+     * mutation; the store then applies the complete batch atomically.
+     */
+    fun applySync(envelope: TrainingSyncEnvelope, session: TrainingSession, registry: TrainingVersionRegistry): SyncApplyResult {
+        val validation = TrainingSyncValidator.validate(envelope, session, registry)
+        require(validation.accepted) { "SYNC_REJECTED:" + validation.rejections.joinToString(",") }
+        validatePinnedSession(session)
+        return store.appendSyncBatch(envelope.events)
+    }
+
     override fun close() { store.close() }
 }
