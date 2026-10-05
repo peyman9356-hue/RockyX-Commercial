@@ -59,7 +59,7 @@ object TrainingSyncValidator {
             }
             envelope.events.forEach { event ->
                 if (event.clientGeneratedId.isBlank()) add(SyncRejectionCode.EMPTY_EVENT_ID)
-                if (event.sessionId.isNotBlank() && event.sessionId != session.sessionId) add(SyncRejectionCode.EVENT_SESSION_MISMATCH)
+                if (event.sessionId != session.sessionId) add(SyncRejectionCode.EVENT_SESSION_MISMATCH)
                 if (event.recordType !in setOf("SESSION", "ATTEMPT", "EVIDENCE", "EVALUATION", "DECISION")) add(SyncRejectionCode.UNSUPPORTED_RECORD_TYPE)
                 if (event.ruleVersionId != session.ruleVersionId || event.policyVersionId != session.policyVersionId) {
                     add(SyncRejectionCode.EVENT_VERSION_MISMATCH)
