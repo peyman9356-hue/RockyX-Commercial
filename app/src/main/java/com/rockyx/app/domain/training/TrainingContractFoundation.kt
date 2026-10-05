@@ -31,7 +31,8 @@ data class TrainingSyncEvent(
     val recordId: String,
     val canonicalPayload: String,
     val ruleVersionId: String,
-    val policyVersionId: String
+    val policyVersionId: String,
+    val supersedesRecordId: String? = null
 )
 data class TrainingSyncEnvelope(
     val sessionId: String,
