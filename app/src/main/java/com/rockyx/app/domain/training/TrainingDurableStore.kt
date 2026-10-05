@@ -221,7 +221,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     return@forEach
                 }
                 if (event.recordType != "SESSION") {
-                    val sessionExists = db.query("immutable_records", arrayOf("record_id"), "record_type='SESSION' AND record_id=?", arrayOf(event.sessionIdForSync()), null, null, null).use { it.moveToFirst() }
+                    val sessionExists = db.query("immutable_records", arrayOf("record_id"), "record_type='SESSION' AND record_id=?", arrayOf(event.sessionId), null, null, null).use { it.moveToFirst() }
                     require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
                 }
                 if (event.recordType == "EVIDENCE" && event.supersedesRecordId != null) {
@@ -248,9 +248,6 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             return SyncApplyResult(false, emptyList(), emptyList(), listOf(e.message ?: "SYNC_REJECTED"))
         } finally { db.endTransaction() }
     }
-
-    private fun TrainingSyncEvent.sessionIdForSync(): String =
-        canonicalPayload.substringAfter("sessionId=", "").substringBefore(";").ifBlank { error("SYNC_SESSION_REFERENCE_REQUIRED:" + recordId) }
 
     private fun syncRecordRank(recordType: String): Int = when (recordType) {
         "SESSION" -> 0
