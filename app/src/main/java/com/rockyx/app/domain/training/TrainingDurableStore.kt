@@ -200,6 +200,67 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             if (it.moveToFirst()) it.getString(0) else null
         }
 
+    /** Applies a sync batch atomically after envelope validation. */
+    fun appendSyncBatch(events: List<TrainingSyncEvent>): SyncApplyResult {
+        val ordered = events.sortedWith(compareBy<TrainingSyncEvent>({ syncRecordRank(it.recordType) }, { it.clientGeneratedId }))
+        val accepted = mutableListOf<String>()
+        val duplicates = mutableListOf<String>()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            ordered.forEach { event ->
+                require(event.clientGeneratedId.isNotBlank()) { "EMPTY_EVENT_ID" }
+                require(event.recordType in setOf("SESSION", "ATTEMPT", "EVIDENCE", "EVALUATION", "DECISION")) {
+                    "UNSUPPORTED_RECORD_TYPE:" + event.recordType
+                }
+                val hash = sha256(event.canonicalPayload)
+                val existingEvent = db.query("client_events", arrayOf("content_hash"), "client_generated_id=?", arrayOf(event.clientGeneratedId), null, null, null).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                if (existingEvent != null) {
+                    require(existingEvent == hash) { "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:" + event.clientGeneratedId }
+                    duplicates += event.clientGeneratedId
+                    return@forEach
+                }
+                if (event.recordType != "SESSION") {
+                    val sessionExists = db.query("immutable_records", arrayOf("record_id"), "record_type='SESSION' AND record_id=?", arrayOf(event.sessionIdForSync()), null, null, null).use { it.moveToFirst() }
+                    require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
+                }
+                if (event.recordType == "EVIDENCE" && event.supersedesRecordId != null) {
+                    val parentExists = db.query("immutable_records", arrayOf("record_id"), "record_type='EVIDENCE' AND record_id=?", arrayOf(event.supersedesRecordId), null, null, null).use { it.moveToFirst() }
+                    require(parentExists) { "Superseded evidence must already exist." }
+                    val successorExists = db.query("evidence_successors", arrayOf("child_id"), "parent_id=?", arrayOf(event.supersedesRecordId), null, null, null).use { it.moveToFirst() }
+                    require(!successorExists) { "CONCURRENT_SUPERSEDE:" + event.supersedesRecordId }
+                    db.insertOrThrow("evidence_successors", null, ContentValues().apply {
+                        put("parent_id", event.supersedesRecordId); put("child_id", event.recordId)
+                    })
+                }
+                db.insertOrThrow("client_events", null, ContentValues().apply {
+                    put("client_generated_id", event.clientGeneratedId); put("content_hash", hash)
+                })
+                db.insertOrThrow("immutable_records", null, ContentValues().apply {
+                    put("record_type", event.recordType); put("record_id", event.recordId)
+                    put("payload_hash", hash); put("payload", event.canonicalPayload); put("created_at", System.currentTimeMillis())
+                })
+                accepted += event.clientGeneratedId
+            }
+            db.setTransactionSuccessful()
+            return SyncApplyResult(true, accepted, duplicates, emptyList())
+        } catch (e: IllegalArgumentException) {
+            return SyncApplyResult(false, emptyList(), emptyList(), listOf(e.message ?: "SYNC_REJECTED"))
+        } finally { db.endTransaction() }
+    }
+
+    private fun TrainingSyncEvent.sessionIdForSync(): String =
+        canonicalPayload.substringAfter("sessionId=", "").substringBefore(";").ifBlank { error("SYNC_SESSION_REFERENCE_REQUIRED:" + recordId) }
+
+    private fun syncRecordRank(recordType: String): Int = when (recordType) {
+        "SESSION" -> 0
+        "ATTEMPT" -> 1
+        "EVIDENCE" -> 2
+        "EVALUATION" -> 3
+        "DECISION" -> 4
+        else -> 99
+    }
+
     /**
      * Training version ordering is numeric-dotted only.
      * This keeps "latest" deterministic and avoids lexicographic errors such as 10 < 2.
