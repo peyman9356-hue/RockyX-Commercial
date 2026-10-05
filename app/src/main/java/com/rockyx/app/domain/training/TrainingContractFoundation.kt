@@ -32,7 +32,8 @@ data class TrainingSyncEvent(
     val canonicalPayload: String,
     val ruleVersionId: String,
     val policyVersionId: String,
-    val supersedesRecordId: String? = null
+    val supersedesRecordId: String? = null,
+    val sessionId: String = ""
 )
 data class TrainingSyncEnvelope(
     val sessionId: String,
@@ -42,9 +43,10 @@ data class TrainingSyncEnvelope(
     val events: List<TrainingSyncEvent>
 )
 
-enum class SyncRejectionCode { EMPTY_SESSION, INVALID_SESSION, VERSION_MISMATCH, EMPTY_EVENT_ID, EVENT_VERSION_MISMATCH }
+enum class SyncRejectionCode { EMPTY_SESSION, INVALID_SESSION, VERSION_MISMATCH, EMPTY_EVENT_ID, EVENT_VERSION_MISMATCH, EVENT_SESSION_MISMATCH, UNSUPPORTED_RECORD_TYPE }
 
 data class SyncValidationResult(val accepted: Boolean, val rejections: List<SyncRejectionCode>)
+data class SyncApplyResult(val accepted: Boolean, val acceptedEventIds: List<String>, val duplicateEventIds: List<String>, val rejections: List<String>)
 
 object TrainingSyncValidator {
     fun validate(envelope: TrainingSyncEnvelope, session: TrainingSession, registry: TrainingVersionRegistry): SyncValidationResult {
@@ -57,6 +59,8 @@ object TrainingSyncValidator {
             }
             envelope.events.forEach { event ->
                 if (event.clientGeneratedId.isBlank()) add(SyncRejectionCode.EMPTY_EVENT_ID)
+                if (event.sessionId.isNotBlank() && event.sessionId != session.sessionId) add(SyncRejectionCode.EVENT_SESSION_MISMATCH)
+                if (event.recordType !in setOf("SESSION", "ATTEMPT", "EVIDENCE", "EVALUATION", "DECISION")) add(SyncRejectionCode.UNSUPPORTED_RECORD_TYPE)
                 if (event.ruleVersionId != session.ruleVersionId || event.policyVersionId != session.policyVersionId) {
                     add(SyncRejectionCode.EVENT_VERSION_MISMATCH)
                 }
