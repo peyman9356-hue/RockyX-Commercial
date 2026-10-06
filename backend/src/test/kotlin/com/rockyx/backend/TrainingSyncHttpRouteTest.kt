@@ -2,6 +2,7 @@ package com.rockyx.backend
 
 import com.rockyx.backend.auth.AccessTokenVerifier
 import com.rockyx.backend.auth.AuthenticatedPrincipal
+import com.rockyx.backend.infra.InMemoryIdempotencyRepository
 import com.rockyx.backend.training.TrainingSyncApplyResponse
 import com.rockyx.backend.training.TrainingSyncEnvelopeRequest
 import com.rockyx.backend.training.TrainingSyncEventRequest
@@ -18,6 +19,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -123,7 +126,7 @@ class TrainingSyncHttpRouteTest {
         application {
             install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
             io.ktor.server.routing.routing {
-                registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository())
+                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository()) }
             }
         }
         val response = client.post("/api/v1/training/sync") {
