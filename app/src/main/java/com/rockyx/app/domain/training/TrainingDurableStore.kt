@@ -640,7 +640,11 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         require(scope == expectedSessionId) { "SYNC_REFERENCE_SESSION_MISMATCH:$recordType:$recordId" }
     }
 
-    fun requireSessionActive(db: SQLiteDatabase, sessionId: String) {
+    fun requireSessionActive(sessionId: String) {
+        requireSessionActive(writableDatabase, sessionId)
+    }
+
+    private fun requireSessionActive(db: SQLiteDatabase, sessionId: String) {
         require(sessionId.isNotBlank()) { "SESSION_ID_REQUIRED" }
         db.query(
             "record_scopes",
