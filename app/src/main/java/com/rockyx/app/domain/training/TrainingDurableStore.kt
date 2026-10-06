@@ -299,14 +299,17 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 val identityHash = syncEventIdentityHash(event)
                 val existingHashes = db.query(
                     "client_events",
-                    arrayOf("content_hash", "identity_hash"),
+                    arrayOf("content_hash", "identity_hash", "legacy_identity"),
                     "client_generated_id=?",
                     arrayOf(event.clientGeneratedId),
                     null, null, null
                 ).use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
+                    if (cursor.moveToFirst()) Triple(cursor.getString(0), cursor.getString(1), cursor.getInt(2)) else null
                 }
                 if (existingHashes != null) {
+                    require(existingHashes.third == 0) {
+                        "LEGACY_CLIENT_ID_IDENTITY_UNVERIFIED:" + event.clientGeneratedId
+                    }
                     val existingIdentityHash = existingHashes.second ?: existingHashes.first
                     require(existingIdentityHash == identityHash) {
                         "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:" + event.clientGeneratedId
@@ -315,6 +318,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     return@forEach
                 }
                 if (event.recordType != "SESSION") {
+                    requireSessionActive(db, event.sessionId)
                     val sessionExists = db.query(
                         "immutable_records",
                         arrayOf("record_id"),
@@ -419,6 +423,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     put("client_generated_id", event.clientGeneratedId)
                     put("content_hash", payloadHash)
                     put("identity_hash", identityHash)
+                    put("legacy_identity", 0)
                 })
                 db.insertOrThrow("immutable_records", null, ContentValues().apply {
                     put("record_type", event.recordType); put("record_id", event.recordId)
@@ -429,7 +434,8 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     db, event.recordType, event.recordId, event.sessionId, persistedDogId.ifBlank { null },
                     event.ruleVersionId, event.policyVersionId,
                     if (event.recordType == "EVIDENCE") (event.evidenceStatus ?: EvidenceStatus.VALID) else null,
-                    if (event.recordType == "EVIDENCE") event.supersedesRecordId else null
+                    if (event.recordType == "EVIDENCE") event.supersedesRecordId else null,
+                    if (event.recordType == "SESSION") SessionStatus.ACTIVE else null
                 )
                 accepted += event.clientGeneratedId
             }
@@ -543,6 +549,35 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         })
     }
 
+    fun invalidateSessionIfPresent(sessionId: String): Boolean {
+        if (sessionId.isBlank()) return false
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val updated = db.update(
+                "record_scopes",
+                ContentValues().apply { put("session_status", SessionStatus.INVALID.name) },
+                "record_type='SESSION' AND record_id=?",
+                arrayOf(sessionId)
+            )
+            db.setTransactionSuccessful()
+            return updated > 0
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun readSessionStatus(sessionId: String): SessionStatus? =
+        readableDatabase.query(
+            "record_scopes",
+            arrayOf("session_status"),
+            "record_type='SESSION' AND record_id=?",
+            arrayOf(sessionId),
+            null, null, null
+        ).use {
+            if (!it.moveToFirst() || it.isNull(0)) null else SessionStatus.valueOf(it.getString(0))
+        }
+
     fun requireRecordVersionPins(recordType: String, recordId: String): Pair<String, String> =
         readableDatabase.query(
             "record_scopes",
@@ -601,6 +636,21 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ).use { if (it.moveToFirst()) it.getString(0) else null }
         require(scope != null) { "SYNC_REFERENCE_SCOPE_UNKNOWN:$recordType:$recordId" }
         require(scope == expectedSessionId) { "SYNC_REFERENCE_SESSION_MISMATCH:$recordType:$recordId" }
+    }
+
+    private fun requireSessionActive(db: SQLiteDatabase, sessionId: String) {
+        require(sessionId.isNotBlank()) { "SESSION_ID_REQUIRED" }
+        db.query(
+            "record_scopes",
+            arrayOf("session_status"),
+            "record_type='SESSION' AND record_id=?",
+            arrayOf(sessionId),
+            null, null, null
+        ).use {
+            require(it.moveToFirst() && !it.isNull(0) && it.getString(0) == SessionStatus.ACTIVE.name) {
+                "SYNC_SESSION_INVALID:$sessionId"
+            }
+        }
     }
 
     private fun requireRecordVersionPins(db: SQLiteDatabase, recordType: String, recordId: String): Pair<String, String> =
