@@ -428,6 +428,20 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         })
     }
 
+    fun readRecordDog(recordType: String, recordId: String): String? {
+        require(recordType.isNotBlank() && recordId.isNotBlank())
+        readableDatabase.query(
+            "record_scopes",
+            arrayOf("dog_id"),
+            "record_type=? AND record_id=?",
+            arrayOf(recordType, recordId),
+            null, null, null
+        ).use {
+            require(it.moveToFirst()) { "RECORD_SCOPE_NOT_FOUND:$recordType:$recordId" }
+            return if (it.isNull(0)) null else it.getString(0)
+        }
+    }
+
     fun requireRecordSession(recordType: String, recordId: String): String {
         require(recordType.isNotBlank() && recordId.isNotBlank())
         readableDatabase.query(
