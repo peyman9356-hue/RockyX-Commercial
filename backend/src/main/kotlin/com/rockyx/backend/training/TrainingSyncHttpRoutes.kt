@@ -5,6 +5,7 @@ import com.rockyx.backend.infra.IdempotencyRepository
 import com.rockyx.backend.api.requestId
 import com.rockyx.backend.auth.AccessTokenVerifier
 import com.rockyx.backend.auth.requirePrincipal
+import com.rockyx.backend.auth.hasScope
 import com.rockyx.backend.domain.ApiError
 import com.rockyx.backend.domain.FailureCategory
 import io.ktor.http.ContentType
