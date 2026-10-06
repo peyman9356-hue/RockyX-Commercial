@@ -249,6 +249,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         try {
             ordered.forEach { event ->
                 require(event.clientGeneratedId.isNotBlank()) { "EMPTY_EVENT_ID" }
+                require(event.recordId.isNotBlank()) { "EMPTY_RECORD_ID" }
                 require(event.recordType in setOf("SESSION", "ATTEMPT", "EVIDENCE", "EVALUATION", "DECISION")) {
                     "UNSUPPORTED_RECORD_TYPE:" + event.recordType
                 }
@@ -281,15 +282,28 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     ).use { it.moveToFirst() }
                     require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
                 }
+
+                val sessionDogId = if (event.recordType == "SESSION") {
+                    require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
+                    event.dogId
+                } else {
+                    requireRecordDog(db, "SESSION", event.sessionId)
+                }
+
                 when (event.recordType) {
                     "ATTEMPT" -> {
                         requireImmutable(db, "SESSION", event.sessionId)
                         requireScopeMatches(db, "SESSION", event.sessionId, event.sessionId)
+                        require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
+                        require(event.dogId == sessionDogId) { "SYNC_EVENT_DOG_MISMATCH:" + event.recordId }
                     }
                     "EVIDENCE" -> {
                         require(event.attemptId.isNotBlank()) { "SYNC_EVIDENCE_ATTEMPT_REQUIRED:" + event.recordId }
                         requireImmutable(db, "ATTEMPT", event.attemptId)
                         requireScopeMatches(db, "ATTEMPT", event.attemptId, event.sessionId)
+                        require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
+                        require(event.dogId == sessionDogId) { "SYNC_EVENT_DOG_MISMATCH:" + event.recordId }
+                        requireScopeDogMatches(db, "ATTEMPT", event.attemptId, sessionDogId)
                     }
                     "EVALUATION" -> {
                         require(event.attemptIds.isNotEmpty()) { "SYNC_EVALUATION_ATTEMPTS_REQUIRED:" + event.recordId }
@@ -297,17 +311,23 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                         event.attemptIds.forEach {
                             requireImmutable(db, "ATTEMPT", it)
                             requireScopeMatches(db, "ATTEMPT", it, event.sessionId)
+                            requireScopeDogMatches(db, "ATTEMPT", it, sessionDogId)
                         }
                         event.evidenceIds.forEach {
                             requireImmutable(db, "EVIDENCE", it)
                             requireScopeMatches(db, "EVIDENCE", it, event.sessionId)
+                            requireScopeDogMatches(db, "EVIDENCE", it, sessionDogId)
                         }
                     }
                     "DECISION" -> {
+                        require(event.basisEvaluationIds.isNotEmpty()) { "DECISION_BASIS_REQUIRED:" + event.recordId }
                         require(event.basisEvaluationIds == event.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
+                        require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
+                        require(event.dogId == sessionDogId) { "SYNC_EVENT_DOG_MISMATCH:" + event.recordId }
                         event.basisEvaluationIds.forEach {
                             requireImmutable(db, "EVALUATION", it)
                             requireScopeMatches(db, "EVALUATION", it, event.sessionId)
+                            requireScopeDogMatches(db, "EVALUATION", it, sessionDogId)
                         }
                     }
                 }
@@ -329,6 +349,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     ).use { it.moveToFirst() }
                     require(!successorExists) { "CONCURRENT_SUPERSEDE:" + event.supersedesRecordId }
                     requireScopeMatches(db, "EVIDENCE", event.supersedesRecordId, event.sessionId)
+                    requireScopeDogMatches(db, "EVIDENCE", event.supersedesRecordId, sessionDogId)
                     db.insertOrThrow("evidence_successors", null, ContentValues().apply {
                         put("parent_id", event.supersedesRecordId); put("child_id", event.recordId)
                     })
@@ -342,7 +363,8 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     put("record_type", event.recordType); put("record_id", event.recordId)
                     put("payload_hash", payloadHash); put("payload", event.canonicalPayload); put("created_at", System.currentTimeMillis())
                 })
-                putRecordScope(db, event.recordType, event.recordId, event.sessionId, event.dogId.ifBlank { null })
+                val persistedDogId = if (event.recordType == "EVALUATION") sessionDogId else event.dogId
+                putRecordScope(db, event.recordType, event.recordId, event.sessionId, persistedDogId.ifBlank { null })
                 accepted += event.clientGeneratedId
             }
             db.setTransactionSuccessful()
@@ -478,6 +500,33 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ).use { if (it.moveToFirst()) it.getString(0) else null }
         require(scope != null) { "SYNC_REFERENCE_SCOPE_UNKNOWN:$recordType:$recordId" }
         require(scope == expectedSessionId) { "SYNC_REFERENCE_SESSION_MISMATCH:$recordType:$recordId" }
+    }
+
+    private fun requireRecordDog(db: SQLiteDatabase, recordType: String, recordId: String): String {
+        require(recordId.isNotBlank()) { "SYNC_REFERENCE_REQUIRED:$recordType" }
+        readableDatabase.query(
+            "record_scopes",
+            arrayOf("dog_id"),
+            "record_type=? AND record_id=?",
+            arrayOf(recordType, recordId),
+            null, null, null
+        ).use {
+            require(it.moveToFirst() && !it.isNull(0)) { "SYNC_RECORD_DOG_SCOPE_UNKNOWN:$recordType:$recordId" }
+            return it.getString(0)
+        }
+    }
+
+    private fun requireScopeDogMatches(db: SQLiteDatabase, recordType: String, recordId: String, expectedDogId: String) {
+        require(recordId.isNotBlank()) { "SYNC_REFERENCE_REQUIRED:$recordType" }
+        val scope = db.query(
+            "record_scopes",
+            arrayOf("dog_id"),
+            "record_type=? AND record_id=?",
+            arrayOf(recordType, recordId),
+            null, null, null
+        ).use { if (it.moveToFirst() && !it.isNull(0)) it.getString(0) else null }
+        require(scope != null) { "SYNC_REFERENCE_DOG_SCOPE_UNKNOWN:$recordType:$recordId" }
+        require(scope == expectedDogId) { "SYNC_REFERENCE_DOG_MISMATCH:$recordType:$recordId" }
     }
 
     private fun requireImmutable(db: SQLiteDatabase, recordType: String, recordId: String) {
