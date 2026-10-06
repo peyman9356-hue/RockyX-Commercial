@@ -186,4 +186,67 @@ class TrainingSyncIntegrationTest {
         }
     }
 
+
+    @Test fun syncRejectsClientIdentityReuseWhenMetadataDiffersEvenWithSamePayload() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-ref-4","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+            val first = TrainingSyncEnvelope(
+                "sync-ref-4","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("same-id","SESSION","sync-ref-4","same-payload","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-4")
+                )
+            )
+            assertTrue(g.applySync(first, session, registry).accepted)
+
+            val conflictingMetadata = TrainingSyncEnvelope(
+                "sync-ref-4","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("same-id","ATTEMPT","attempt-2","same-payload","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-4",dogId="d1")
+                )
+            )
+            val result = g.applySync(conflictingMetadata, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.startsWith("CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("ATTEMPT","attempt-2") })
+        }
+    }
+
+    @Test fun syncAcceptsEvidenceSupersedeWhenParentAndChildArriveInSameBatch() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-ref-5","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+            val first = TrainingSyncEnvelope(
+                "sync-ref-5","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("s1","SESSION","sync-ref-5","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-5"),
+                    TrainingSyncEvent("a1","ATTEMPT","attempt-1","attempt","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-5",dogId="d1")
+                )
+            )
+            assertTrue(g.applySync(first, session, registry).accepted)
+
+            val batch = first.copy(events=listOf(
+                TrainingSyncEvent("child-first","EVIDENCE","evidence-child","child","SYNC:1","SYNC_POLICY:1",
+                    supersedesRecordId="evidence-parent",sessionId="sync-ref-5",attemptId="attempt-1"),
+                TrainingSyncEvent("parent-second","EVIDENCE","evidence-parent","parent","SYNC:1","SYNC_POLICY:1",
+                    sessionId="sync-ref-5",attemptId="attempt-1")
+            ))
+
+            val result = g.applySync(batch, session, registry)
+            assertTrue(result.accepted)
+            assertEquals(listOf("parent-second","child-first"), result.acceptedEventIds)
+            assertEquals("parent", TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","evidence-parent") })
+            assertEquals("child", TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","evidence-child") })
+        }
+    }
+
+
 }
