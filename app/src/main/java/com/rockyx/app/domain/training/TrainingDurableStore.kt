@@ -6,17 +6,22 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
 
-class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 1) {
+class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("PRAGMA foreign_keys=ON")
         db.execSQL("CREATE TABLE rule_versions (rule_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(rule_id, version))")
         db.execSQL("CREATE TABLE policy_versions (policy_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(policy_id, version))")
-        db.execSQL("CREATE TABLE client_events (client_generated_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE client_events (client_generated_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, identity_hash TEXT NOT NULL)")
         db.execSQL("CREATE TABLE immutable_records (record_type TEXT NOT NULL, record_id TEXT NOT NULL, payload_hash TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(record_type, record_id))")
         db.execSQL("CREATE TABLE evidence_successors (parent_id TEXT PRIMARY KEY, child_id TEXT NOT NULL UNIQUE)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE client_events ADD COLUMN identity_hash TEXT")
+            db.execSQL("UPDATE client_events SET identity_hash = content_hash WHERE identity_hash IS NULL")
+        }
+    }
 
     fun registerRule(version: RuleVersion) {
         validateVersion(version.version)
@@ -109,7 +114,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             }
         }
         db.insertOrThrow("client_events", null, ContentValues().apply {
-            put("client_generated_id", clientGeneratedId); put("content_hash", hash)
+            put("client_generated_id", clientGeneratedId); put("content_hash", hash); put("identity_hash", hash)
         })
         return true
     }
@@ -157,7 +162,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 })
             }
             db.insertOrThrow("client_events", null, ContentValues().apply {
-                put("client_generated_id", eventId); put("content_hash", hash)
+                put("client_generated_id", eventId); put("content_hash", hash); put("identity_hash", hash)
             })
             db.insertOrThrow("immutable_records", null, ContentValues().apply {
                 put("record_type", recordType); put("record_id", recordId)
@@ -202,7 +207,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
 
     /** Applies a sync batch atomically after envelope validation. */
     fun appendSyncBatch(events: List<TrainingSyncEvent>): SyncApplyResult {
-        val ordered = events.sortedWith(compareBy<TrainingSyncEvent>({ syncRecordRank(it.recordType) }, { it.clientGeneratedId }))
+        val ordered = orderSyncEvents(events)
         val accepted = mutableListOf<String>()
         val duplicates = mutableListOf<String>()
         val db = writableDatabase
@@ -213,15 +218,33 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 require(event.recordType in setOf("SESSION", "ATTEMPT", "EVIDENCE", "EVALUATION", "DECISION")) {
                     "UNSUPPORTED_RECORD_TYPE:" + event.recordType
                 }
-                val hash = sha256(event.canonicalPayload)
-                val existingEvent = db.query("client_events", arrayOf("content_hash"), "client_generated_id=?", arrayOf(event.clientGeneratedId), null, null, null).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-                if (existingEvent != null) {
-                    require(existingEvent == hash) { "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:" + event.clientGeneratedId }
+                val payloadHash = sha256(event.canonicalPayload)
+                val identityHash = syncEventIdentityHash(event)
+                val existingHashes = db.query(
+                    "client_events",
+                    arrayOf("content_hash", "identity_hash"),
+                    "client_generated_id=?",
+                    arrayOf(event.clientGeneratedId),
+                    null, null, null
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
+                }
+                if (existingHashes != null) {
+                    val existingIdentityHash = existingHashes.second ?: existingHashes.first
+                    require(existingIdentityHash == identityHash) {
+                        "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:" + event.clientGeneratedId
+                    }
                     duplicates += event.clientGeneratedId
                     return@forEach
                 }
                 if (event.recordType != "SESSION") {
-                    val sessionExists = db.query("immutable_records", arrayOf("record_id"), "record_type='SESSION' AND record_id=?", arrayOf(event.sessionId), null, null, null).use { it.moveToFirst() }
+                    val sessionExists = db.query(
+                        "immutable_records",
+                        arrayOf("record_id"),
+                        "record_type='SESSION' AND record_id=?",
+                        arrayOf(event.sessionId),
+                        null, null, null
+                    ).use { it.moveToFirst() }
                     require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
                 }
                 when (event.recordType) {
@@ -241,20 +264,34 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     }
                 }
                 if (event.recordType == "EVIDENCE" && event.supersedesRecordId != null) {
-                    val parentExists = db.query("immutable_records", arrayOf("record_id"), "record_type='EVIDENCE' AND record_id=?", arrayOf(event.supersedesRecordId), null, null, null).use { it.moveToFirst() }
+                    val parentExists = db.query(
+                        "immutable_records",
+                        arrayOf("record_id"),
+                        "record_type='EVIDENCE' AND record_id=?",
+                        arrayOf(event.supersedesRecordId),
+                        null, null, null
+                    ).use { it.moveToFirst() }
                     require(parentExists) { "Superseded evidence must already exist." }
-                    val successorExists = db.query("evidence_successors", arrayOf("child_id"), "parent_id=?", arrayOf(event.supersedesRecordId), null, null, null).use { it.moveToFirst() }
+                    val successorExists = db.query(
+                        "evidence_successors",
+                        arrayOf("child_id"),
+                        "parent_id=?",
+                        arrayOf(event.supersedesRecordId),
+                        null, null, null
+                    ).use { it.moveToFirst() }
                     require(!successorExists) { "CONCURRENT_SUPERSEDE:" + event.supersedesRecordId }
                     db.insertOrThrow("evidence_successors", null, ContentValues().apply {
                         put("parent_id", event.supersedesRecordId); put("child_id", event.recordId)
                     })
                 }
                 db.insertOrThrow("client_events", null, ContentValues().apply {
-                    put("client_generated_id", event.clientGeneratedId); put("content_hash", hash)
+                    put("client_generated_id", event.clientGeneratedId)
+                    put("content_hash", payloadHash)
+                    put("identity_hash", identityHash)
                 })
                 db.insertOrThrow("immutable_records", null, ContentValues().apply {
                     put("record_type", event.recordType); put("record_id", event.recordId)
-                    put("payload_hash", hash); put("payload", event.canonicalPayload); put("created_at", System.currentTimeMillis())
+                    put("payload_hash", payloadHash); put("payload", event.canonicalPayload); put("created_at", System.currentTimeMillis())
                 })
                 accepted += event.clientGeneratedId
             }
@@ -263,6 +300,75 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         } catch (e: IllegalArgumentException) {
             return SyncApplyResult(false, emptyList(), emptyList(), listOf(e.message ?: "SYNC_REJECTED"))
         } finally { db.endTransaction() }
+    }
+
+    private fun orderSyncEvents(events: List<TrainingSyncEvent>): List<TrainingSyncEvent> {
+        val evidenceEvents = events.filter { it.recordType == "EVIDENCE" }
+        val orderedEvidence = topologicalEvidenceOrder(evidenceEvents)
+        val evidenceRank = orderedEvidence.withIndex().associate { it.value.clientGeneratedId to it.index }
+        return events.sortedWith(
+            compareBy<TrainingSyncEvent>(
+                { syncRecordRank(it.recordType) },
+                { if (it.recordType == "EVIDENCE") evidenceRank[it.clientGeneratedId] ?: Int.MAX_VALUE else Int.MAX_VALUE },
+                { it.clientGeneratedId }
+            )
+        )
+    }
+
+    private fun topologicalEvidenceOrder(events: List<TrainingSyncEvent>): List<TrainingSyncEvent> {
+        if (events.size < 2) return events.sortedBy { it.clientGeneratedId }
+        val byRecordId = events.associateBy { it.recordId }
+        val indegree = events.associate { it.clientGeneratedId to 0 }.toMutableMap()
+        val children = events.associate { it.clientGeneratedId to mutableListOf<String>() }.toMutableMap()
+
+        events.forEach { event ->
+            val parent = event.supersedesRecordId?.let { byRecordId[it] }
+            if (parent != null) {
+                indegree[event.clientGeneratedId] = (indegree[event.clientGeneratedId] ?: 0) + 1
+                children.getValue(parent.clientGeneratedId).add(event.clientGeneratedId)
+            }
+        }
+
+        val byClientId = events.associateBy { it.clientGeneratedId }
+        val available = java.util.PriorityQueue<String>()
+        indegree.filterValues { it == 0 }.keys.sorted().forEach { available.add(it) }
+        val ordered = mutableListOf<TrainingSyncEvent>()
+
+        while (available.isNotEmpty()) {
+            val id = available.remove()
+            ordered += byClientId.getValue(id)
+            children.getValue(id).sorted().forEach { childId ->
+                val next = indegree[childId]!! - 1
+                indegree[childId] = next
+                if (next == 0) available.add(childId)
+            }
+        }
+
+        if (ordered.size != events.size) {
+            return events.sortedBy { it.clientGeneratedId }
+        }
+        return ordered
+    }
+
+    private fun syncEventIdentityHash(event: TrainingSyncEvent): String {
+        fun part(value: String): String = value.length.toString() + ":" + value
+        fun list(values: List<String>): String = values.joinToString(prefix = "[", postfix = "]") { part(it) }
+        return sha256(
+            buildString {
+                append("recordType=").append(part(event.recordType))
+                append("|recordId=").append(part(event.recordId))
+                append("|canonicalPayload=").append(part(event.canonicalPayload))
+                append("|ruleVersionId=").append(part(event.ruleVersionId))
+                append("|policyVersionId=").append(part(event.policyVersionId))
+                append("|supersedesRecordId=").append(part(event.supersedesRecordId ?: ""))
+                append("|sessionId=").append(part(event.sessionId))
+                append("|dogId=").append(part(event.dogId))
+                append("|attemptId=").append(part(event.attemptId))
+                append("|evidenceIds=").append(list(event.evidenceIds))
+                append("|attemptIds=").append(list(event.attemptIds))
+                append("|basisEvaluationIds=").append(list(event.basisEvaluationIds))
+            }
+        )
     }
 
     private fun requireImmutable(db: SQLiteDatabase, recordType: String, recordId: String) {
