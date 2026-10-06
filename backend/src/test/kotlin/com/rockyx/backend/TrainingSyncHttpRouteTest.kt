@@ -132,10 +132,7 @@ class TrainingSyncHttpRouteTest {
                 throw TrainingSyncRejectedException(listOf("INVALID_SESSION:session-1"))
         }
         application {
-            install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
-            io.ktor.server.routing.routing {
-                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository()) }
-            }
+            configureTrainingSyncTest(verifier, repository, InMemoryIdempotencyRepository())
         }
         val response = client.post("/api/v1/training/sync") {
             contentType(ContentType.Application.Json)
