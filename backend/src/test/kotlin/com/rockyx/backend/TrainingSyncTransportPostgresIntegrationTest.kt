@@ -5,6 +5,7 @@ import com.rockyx.backend.infra.db.DatabaseConfig
 import com.rockyx.backend.training.*
 import java.sql.Connection
 import java.util.UUID
+import org.postgresql.util.PSQLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,12 +32,12 @@ class TrainingSyncTransportPostgresIntegrationTest {
                 listOf(sessionEvent(sessionId, dogId), attemptEvent(sessionId, dogId))
             )
 
-            val first = repository.apply(userId, request)
+            val first = applyWithDiagnostics(repository, userId, request)
             assertTrue(first.accepted)
             assertEquals(2, first.acceptedEventIds.size)
             assertTrue(first.duplicateEventIds.isEmpty())
 
-            val second = repository.apply(userId, request)
+            val second = applyWithDiagnostics(repository, userId, request)
             assertTrue(second.accepted)
             assertEquals(setOf("session-event", "attempt-event"), second.duplicateEventIds.toSet())
             assertTrue(second.acceptedEventIds.isEmpty())
@@ -69,7 +70,7 @@ class TrainingSyncTransportPostgresIntegrationTest {
 
             val repository = PostgresTrainingSyncTransportRepository(ds)
             val initial = envelope(sessionId, dogId, listOf(sessionEvent(sessionId, dogId)))
-            repository.apply(userId, initial)
+            applyWithDiagnostics(repository, userId, initial)
 
             val mismatched = initial.copy(
                 policyVersionId = "SIT_POLICY:2",
@@ -111,7 +112,8 @@ class TrainingSyncTransportPostgresIntegrationTest {
             insertDog(ds.connection, userId, dogId)
             val repository = PostgresTrainingSyncTransportRepository(ds)
 
-            repository.apply(
+            applyWithDiagnostics(
+                repository,
                 userId,
                 envelope(
                     sessionId,
@@ -136,7 +138,7 @@ class TrainingSyncTransportPostgresIntegrationTest {
                 dogId,
                 listOf("evidence-1")
             )
-            assertTrue(repository.apply(userId, envelope(sessionId, dogId, listOf(validEvaluation))).accepted)
+            assertTrue(applyWithDiagnostics(repository, userId, envelope(sessionId, dogId, listOf(validEvaluation))).accepted)
 
             val invalidChild = evidenceEvent(
                 "evidence-2",
@@ -146,7 +148,7 @@ class TrainingSyncTransportPostgresIntegrationTest {
                 status = "INVALID",
                 supersedes = "evidence-1"
             )
-            assertTrue(repository.apply(userId, envelope(sessionId, dogId, listOf(invalidChild))).accepted)
+            assertTrue(applyWithDiagnostics(repository, userId, envelope(sessionId, dogId, listOf(invalidChild))).accepted)
 
             val afterInvalidCorrection = evaluationEvent(
                 "evaluation-2",
@@ -155,7 +157,7 @@ class TrainingSyncTransportPostgresIntegrationTest {
                 dogId,
                 listOf("evidence-1")
             )
-            assertTrue(repository.apply(userId, envelope(sessionId, dogId, listOf(afterInvalidCorrection))).accepted)
+            assertTrue(applyWithDiagnostics(repository, userId, envelope(sessionId, dogId, listOf(afterInvalidCorrection))).accepted)
 
             val missingActiveEvidence = evaluationEvent(
                 "evaluation-3",
@@ -249,6 +251,23 @@ class TrainingSyncTransportPostgresIntegrationTest {
         rule: String = "SIT_AGGREGATION_V1_PROTOTYPE:1",
         policy: String = "SIT_POLICY:1"
     ) = TrainingSyncEnvelopeRequest(sessionId, dogId, rule, policy, events)
+
+    private fun applyWithDiagnostics(
+        repository: PostgresTrainingSyncTransportRepository,
+        userId: String,
+        envelope: TrainingSyncEnvelopeRequest
+    ): TrainingSyncApplyResponse =
+        try {
+            repository.apply(userId, envelope)
+        } catch (e: PSQLException) {
+            val server = e.serverErrorMessage
+            throw AssertionError(
+                "PSQLSTATE=" + e.sqlState + " MESSAGE=" + e.message +
+                    " SERVER_MESSAGE=" + server?.message +
+                    " DETAIL=" + server?.detail +
+                    " HINT=" + server?.hint
+            )
+        }
 
     private fun assertRejected(
         repository: PostgresTrainingSyncTransportRepository,
