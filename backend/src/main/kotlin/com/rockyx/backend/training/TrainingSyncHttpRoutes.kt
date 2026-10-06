@@ -1,25 +1,33 @@
 package com.rockyx.backend.training
 
 import com.rockyx.backend.api.SecurityPolicy
+import com.rockyx.backend.infra.IdempotencyRepository
 import com.rockyx.backend.api.requestId
 import com.rockyx.backend.auth.AccessTokenVerifier
 import com.rockyx.backend.auth.requirePrincipal
 import com.rockyx.backend.domain.ApiError
 import com.rockyx.backend.domain.FailureCategory
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Production HTTP adapter for the Gate 1 Training Sync transport.
  * Domain/persistence semantics remain owned by TrainingSyncTransportRepository.
  */
+private val trainingSyncJson = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
 fun Route.registerTrainingSyncHttpRoute(
     verifier: AccessTokenVerifier,
-    transport: TrainingSyncTransportRepository
+    transport: TrainingSyncTransportRepository,
+    idempotency: IdempotencyRepository
 ) {
     route("/training") {
         post("/sync") {
@@ -67,8 +75,15 @@ fun Route.registerTrainingSyncHttpRoute(
                 )
             }
 
+            val key = idempotencyKey!!
+            idempotency.get(principal.userId, key)?.let { cached ->
+                return@post call.respondText(cached, ContentType.Application.Json)
+            }
+
             try {
-                call.respond(transport.apply(principal.userId, envelope))
+                val response = transport.apply(principal.userId, envelope)
+                idempotency.put(principal.userId, key, trainingSyncJson.encodeToString(response))
+                call.respond(response)
             } catch (e: TrainingSyncRejectedException) {
                 val status = when {
                     e.codes.any { it.startsWith("INVALID_SESSION:") || it.startsWith("SYNC_SESSION_INVALID:") } -> HttpStatusCode.Conflict
