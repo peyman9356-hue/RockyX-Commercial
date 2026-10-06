@@ -130,3 +130,4 @@ text = text.replace(call_anchor, "PostgresEcosystemRepository(ds), trainingSync 
 application.write_text(text, encoding="utf-8")
 
 print("Production training sync transport overlay applied.")
+# Gate2 transport overlay includes PostgreSQL integration diagnostics.
