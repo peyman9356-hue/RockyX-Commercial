@@ -13,6 +13,75 @@ on:
       - ".github/workflows/rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8_WORKFLOW.yml"
 
 jobs:
+
+  production_transport_audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Verify and extract production source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip"
+          test -f "$ARCHIVE"
+          EXPECTED="03f26c9bb4b4dc2181b898138b638a756196398923cc7214b431edb1cfcbca6e"
+          ACTUAL="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          rm -rf audit-src
+          mkdir audit-src
+          unzip -q "$ARCHIVE" -d audit-src
+          test -d audit-src/rev14src/backend
+
+      - name: Audit production transport boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="audit-src/rev14src"
+          BACKEND="$ROOT/backend"
+          REPORT="production-transport-audit.txt"
+          {
+            echo "ROCKY X — PRODUCTION TRANSPORT AUDIT"
+            echo "HEAD: $GITHUB_SHA"
+            echo
+            echo "[BACKEND FILES]"
+            find "$BACKEND" -type f | sort
+            echo
+            echo "[ROUTING / HTTP ENTRYPOINTS]"
+            grep -RInE 'routing[[:space:]]*\{|route\(|get\(|post\(|put\(|patch\(|delete\(' "$BACKEND/src" || true
+            echo
+            echo "[SYNC IDENTIFIERS / CONTRACT REFERENCES]"
+            grep -RInE 'TrainingSync|SyncEnvelope|SyncApplyResult|clientGeneratedId|ruleVersionId|policyVersionId|supersedesRecordId|basisEvaluationIds|applySync|appendSyncBatch' "$ROOT/app/src" "$BACKEND/src" || true
+            echo
+            echo "[AUTH / CREDENTIALS / REQUEST CONTEXT]"
+            grep -RInE 'authenticate|authorization|bearer|jwt|token|principal|call\.principal' "$BACKEND/src" || true
+            echo
+            echo "[PERSISTENCE / TRANSACTION BOUNDARY]"
+            grep -RInE 'transaction|beginTransaction|commit|rollback|Exposed|Database|SQLite|repository|DAO' "$BACKEND/src" || true
+            echo
+            echo "[NETWORK CLIENT / SERVER OUTBOUND]"
+            grep -RInE 'HttpClient|OkHttp|Ktor|Retrofit|URLConnection|request\{|submitForm|http://' "$BACKEND/src" || true
+            echo
+            echo "[BACKEND TESTS]"
+            find "$BACKEND/src/test" -type f 2>/dev/null | sort || true
+            echo
+            echo "[SYNC TEST REFERENCES]"
+            grep -RInE 'sync|Sync' "$BACKEND/src/test" 2>/dev/null || true
+          } > "$REPORT"
+          cat "$REPORT"
+
+      - name: Upload production transport audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocky-x-production-transport-audit
+          path: |
+            production-transport-audit.txt
+            audit-src/rev14src/backend/src
+            audit-src/rev14src/backend/build.gradle.kts
+            audit-src/rev14src/settings.gradle.kts
+          if-no-files-found: error
+          retention-days: 14
   build:
     runs-on: ubuntu-latest
 
