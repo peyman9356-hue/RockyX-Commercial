@@ -277,3 +277,4 @@ jobs:
           path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+# Gate2 transport verification trigger: PostgreSQL integration diagnostics.
