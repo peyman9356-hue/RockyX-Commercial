@@ -71,7 +71,7 @@ class TrainingSyncHttpRouteTest {
     fun rejectsMissingIdempotencyKey() = testApplication {
         application {
             io.ktor.server.routing.routing {
-                registerTrainingSyncHttpRoute(verifier, fakeRepository())
+                registerTrainingSyncHttpRoute(verifier, fakeRepository(), InMemoryIdempotencyRepository())
             }
         }
         val response = client.post("/api/v1/training/sync") {
@@ -123,7 +123,7 @@ class TrainingSyncHttpRouteTest {
         application {
             install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
             io.ktor.server.routing.routing {
-                registerTrainingSyncHttpRoute(verifier, repository)
+                registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository())
             }
         }
         val response = client.post("/api/v1/training/sync") {
