@@ -94,7 +94,6 @@ class TrainingDurableStoreTest {
         }
 
         TrainingPersistenceGateway(context).use { g ->
-            g.register(RuleVersion("LEGACY","1","VALID"), PolicyVersion("LEGACY_POLICY","1","VALID"))
             val attempt = TrainingAttempt(
                 "legacy-attempt","legacy-session",1,emptyList(),"d1",2L,"legacy-attempt"
             )
