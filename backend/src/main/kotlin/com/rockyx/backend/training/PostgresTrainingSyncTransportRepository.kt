@@ -403,7 +403,7 @@ class PostgresTrainingSyncTransportRepository(
                 basis_evaluation_ids_json,identity_hash
             )
             VALUES (
-                ?,?,?,?,?,?,?,CAST(? AS jsonb),?,?,?,?,CAST(? AS jsonb),CAST(? AS jsonb),CAST(? AS jsonb),?
+                ?,?,?,?,?,?,?,?,CAST(? AS jsonb),?,?,?,CAST(? AS jsonb),CAST(? AS jsonb),CAST(? AS jsonb),?
             )
             """.trimIndent()
         ).use { ps ->
