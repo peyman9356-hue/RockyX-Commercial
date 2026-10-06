@@ -34,7 +34,10 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         TrainingValidation.validateSession(session).also { errors ->
             require(errors.isEmpty()) { "INVALID_SESSION:" + errors.joinToString(",") }
         }
-        store.appendSession(session.sessionId, session.dogId, canonicalPayload, session.createdAt)
+        store.appendSession(
+            session.sessionId, session.dogId, canonicalPayload, session.createdAt,
+            session.ruleVersionId, session.policyVersionId
+        )
         return true
     }
 
@@ -61,10 +64,18 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
     fun appendEvidence(evidence: SitEvidence, canonicalPayload: String): Boolean {
         store.requireImmutableRecord("SESSION", evidence.sessionId)
         store.requireImmutableRecord("ATTEMPT", evidence.attemptId)
+        require(evidence.dogId.isNotBlank()) { "EVIDENCE_DOG_REQUIRED" }
         require(store.requireRecordSession("ATTEMPT", evidence.attemptId) == evidence.sessionId) { "EVIDENCE_ATTEMPT_SESSION_MISMATCH" }
+        val sessionDogId = store.readRecordDog("SESSION", evidence.sessionId)
+        val attemptDogId = store.readRecordDog("ATTEMPT", evidence.attemptId)
+        require(sessionDogId == evidence.dogId) { "EVIDENCE_DOG_MISMATCH" }
+        require(attemptDogId == evidence.dogId) { "EVIDENCE_ATTEMPT_DOG_MISMATCH" }
         if (evidence.supersedesEvidenceId != null) {
             require(store.requireRecordSession("EVIDENCE", evidence.supersedesEvidenceId) == evidence.sessionId) {
                 "EVIDENCE_SUPERSEDE_SESSION_MISMATCH"
+            }
+            require(store.readRecordDog("EVIDENCE", evidence.supersedesEvidenceId) == evidence.dogId) {
+                "EVIDENCE_SUPERSEDE_DOG_MISMATCH"
             }
         }
         return store.appendEventAndImmutableRecord(
@@ -75,12 +86,19 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             createdAt = System.currentTimeMillis(),
             supersedesEvidenceId = evidence.supersedesEvidenceId,
             scopeSessionId = evidence.sessionId,
-            scopeDogId = evidence.dogId
+            scopeDogId = evidence.dogId,
+            ruleVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).first,
+            policyVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).second,
+            evidenceStatus = evidence.status
         )
     }
 
     fun appendEvaluation(evaluation: Evaluation, canonicalPayload: String): Boolean {
         store.requireImmutableRecord("SESSION", evaluation.sessionId)
+        val sessionPins = store.requireRecordVersionPins("SESSION", evaluation.sessionId)
+        require(evaluation.ruleVersionId == sessionPins.first) { "EVALUATION_RULE_VERSION_MISMATCH" }
+        require(evaluation.policyVersionId == sessionPins.second) { "EVALUATION_POLICY_VERSION_MISMATCH" }
+        store.requireCanonicalActiveEvidenceIds(evaluation.sessionId, evaluation.evidenceIds)
         evaluation.attemptIds.forEach {
             store.requireImmutableRecord("ATTEMPT", it)
             require(store.requireRecordSession("ATTEMPT", it) == evaluation.sessionId) { "EVALUATION_ATTEMPT_SESSION_MISMATCH:$it" }
@@ -95,22 +113,35 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             recordId = evaluation.evaluationId,
             canonicalPayload = canonicalPayload,
             createdAt = evaluation.createdAt,
-            scopeSessionId = evaluation.sessionId
+            scopeSessionId = evaluation.sessionId,
+            scopeRuleVersionId = sessionPins.first,
+            scopePolicyVersionId = sessionPins.second
         )
     }
 
     fun appendDecision(decision: Decision, canonicalPayload: String): Boolean {
+        require(decision.basisEvaluationIds.isNotEmpty()) { "DECISION_BASIS_REQUIRED" }
         require(decision.basisEvaluationIds == decision.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
-        decision.basisEvaluationIds.forEach { store.requireImmutableRecord("EVALUATION", it) }
-        val basisSessions = decision.basisEvaluationIds.map { store.requireRecordSession("EVALUATION", it) }.distinct()
+        val basisEvaluations = decision.basisEvaluationIds.map {
+            store.requireImmutableRecord("EVALUATION", it)
+            it to store.requireRecordVersionPins("EVALUATION", it)
+        }
+        val basisSessions = basisEvaluations.map { store.requireRecordSession("EVALUATION", it.first) }.distinct()
         require(basisSessions.size == 1) { "DECISION_BASIS_SESSION_MISMATCH" }
+        val sessionPins = store.requireRecordVersionPins("SESSION", basisSessions.single())
+        require(decision.policyVersionId == sessionPins.second) { "DECISION_POLICY_VERSION_MISMATCH" }
+        require(basisEvaluations.all { it.second.second == decision.policyVersionId }) {
+            "DECISION_BASIS_POLICY_VERSION_MISMATCH"
+        }
         return store.appendEventAndImmutableRecord(
             eventId = decision.decisionId,
             recordType = "DECISION",
             recordId = decision.decisionId,
             canonicalPayload = canonicalPayload,
             createdAt = decision.createdAt,
-            scopeSessionId = basisSessions.single()
+            scopeSessionId = basisSessions.single(),
+            scopeRuleVersionId = sessionPins.first,
+            scopePolicyVersionId = sessionPins.second
         )
     }
 
