@@ -122,14 +122,15 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         require(clientGeneratedId.isNotBlank())
         val hash = sha256(canonicalPayload)
         val db = writableDatabase
-        db.query("client_events", arrayOf("content_hash"), "client_generated_id=?", arrayOf(clientGeneratedId), null, null, null).use {
+        db.query("client_events", arrayOf("content_hash", "legacy_identity"), "client_generated_id=?", arrayOf(clientGeneratedId), null, null, null).use {
             if (it.moveToFirst()) {
+                require(it.getInt(1) == 0) { "LEGACY_CLIENT_ID_IDENTITY_UNVERIFIED:$clientGeneratedId" }
                 require(it.getString(0) == hash) { "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:$clientGeneratedId" }
                 return false
             }
         }
         db.insertOrThrow("client_events", null, ContentValues().apply {
-            put("client_generated_id", clientGeneratedId); put("content_hash", hash); put("identity_hash", hash)
+            put("client_generated_id", clientGeneratedId); put("content_hash", hash); put("identity_hash", hash); put("legacy_identity", 0)
         })
         return true
     }
@@ -145,11 +146,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         appendImmutable(
             "SESSION", sessionId, canonicalPayload, createdAt,
             sessionId = sessionId, dogId = dogId,
-            ruleVersionId = ruleVersionId, policyVersionId = policyVersionId
+            ruleVersionId = ruleVersionId, policyVersionId = policyVersionId,
+            sessionStatus = SessionStatus.ACTIVE
         )
     }
 
-    fun appendAttempt(attemptId: String, clientGeneratedId: String, canonicalPayload: String, createdAt: Long, sessionId: String, dogId: String): Boolean {
+    fun appendAttempt(attemptId: String, clientGeneratedId: String, canonicalPayload: String, createdAt: Long, sessionId: String, dogId: String, ruleVersionId: String? = null, policyVersionId: String? = null): Boolean {
         return appendEventAndImmutableRecord(
             eventId = clientGeneratedId,
             recordType = "ATTEMPT",
@@ -157,7 +159,9 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             canonicalPayload = canonicalPayload,
             createdAt = createdAt,
             scopeSessionId = sessionId,
-            scopeDogId = dogId
+            scopeDogId = dogId,
+            scopeRuleVersionId = ruleVersionId,
+            scopePolicyVersionId = policyVersionId
         )
     }
 
@@ -171,7 +175,8 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ruleVersionId: String? = null,
         policyVersionId: String? = null,
         evidenceStatus: EvidenceStatus? = null,
-        supersedesRecordId: String? = null
+        supersedesRecordId: String? = null,
+        sessionStatus: SessionStatus? = null
     ) {
         require(recordType.isNotBlank() && recordId.isNotBlank())
         val db = writableDatabase
@@ -184,7 +189,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             if (sessionId != null) {
                 putRecordScope(
                     db, recordType, recordId, sessionId, dogId,
-                    ruleVersionId, policyVersionId, evidenceStatus, supersedesRecordId
+                    ruleVersionId, policyVersionId, evidenceStatus, supersedesRecordId, sessionStatus
                 )
             }
             db.setTransactionSuccessful()
@@ -208,8 +213,9 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.query("client_events", arrayOf("content_hash"), "client_generated_id=?", arrayOf(eventId), null, null, null).use {
+            db.query("client_events", arrayOf("content_hash", "legacy_identity"), "client_generated_id=?", arrayOf(eventId), null, null, null).use {
                 if (it.moveToFirst()) {
+                    require(it.getInt(1) == 0) { "LEGACY_CLIENT_ID_IDENTITY_UNVERIFIED:$eventId" }
                     require(it.getString(0) == hash) { "CLIENT_ID_REUSE_WITH_DIFFERENT_CONTENT:$eventId" }
                     return false
                 }
@@ -224,7 +230,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 })
             }
             db.insertOrThrow("client_events", null, ContentValues().apply {
-                put("client_generated_id", eventId); put("content_hash", hash); put("identity_hash", hash)
+                put("client_generated_id", eventId); put("content_hash", hash); put("identity_hash", hash); put("legacy_identity", 0)
             })
             db.insertOrThrow("immutable_records", null, ContentValues().apply {
                 put("record_type", recordType); put("record_id", recordId)
@@ -533,6 +539,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             if (policyVersionId != null) put("policy_version_id", policyVersionId)
             if (evidenceStatus != null) put("evidence_status", evidenceStatus.name)
             if (supersedesRecordId != null) put("supersedes_record_id", supersedesRecordId)
+            if (sessionStatus != null) put("session_status", sessionStatus.name)
         })
     }
 
