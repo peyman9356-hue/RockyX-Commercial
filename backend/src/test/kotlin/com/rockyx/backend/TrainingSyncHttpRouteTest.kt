@@ -56,7 +56,7 @@ class TrainingSyncHttpRouteTest {
     fun rejectsMissingAuthentication() = testApplication {
         application {
             io.ktor.server.routing.routing {
-                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, fakeRepository()) }
+                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, fakeRepository(), InMemoryIdempotencyRepository()) }
             }
         }
         val response = client.post("/api/v1/training/sync") {
@@ -89,7 +89,7 @@ class TrainingSyncHttpRouteTest {
         application {
             install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
             io.ktor.server.routing.routing {
-                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, repository) }
+                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository()) }
             }
         }
         val response = client.post("/api/v1/training/sync") {
@@ -101,6 +101,14 @@ class TrainingSyncHttpRouteTest {
         assertEquals(HttpStatusCode.OK, response.status)
         assertTrue(response.bodyAsText().contains("event-1"))
         assertEquals("user-1", repository.userId)
+        val replay = client.post("/api/v1/training/sync") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Authorization, "Bearer valid-token")
+            header("Idempotency-Key", "idem-1")
+            setBody(json.encodeToString(envelope()))
+        }
+        assertEquals(HttpStatusCode.OK, replay.status)
+        assertEquals(response.bodyAsText(), replay.bodyAsText())
     }
 
     @Test
