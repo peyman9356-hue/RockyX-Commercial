@@ -132,3 +132,4 @@ application.write_text(text, encoding="utf-8")
 print("Production training sync transport overlay applied.")
 # Gate2 transport overlay includes PostgreSQL integration diagnostics.
 # Gate2 parameter-binding fix included in tracked repository overlay.
+# Gate2 canonical JSON parameter position fix included.
