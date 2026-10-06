@@ -43,7 +43,7 @@ anchor = '''        get("/internal/metrics") {
             call.respond(HttpStatusCode.NotFound)
         }
 '''
-insert = anchor + '\n        trainingSyncTransport?.let { registerTrainingSyncHttpRoute(verifier, it) }\n'
+insert = anchor + '\n        trainingSyncTransport?.let { registerTrainingSyncHttpRoute(verifier, it, idempotency) }\n'
 if anchor not in s:
     raise SystemExit('Routes insertion anchor missing')
 s = s.replace(anchor, insert, 1)
