@@ -18,6 +18,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.install
 import io.ktor.server.testing.testApplication
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -58,7 +59,7 @@ class TrainingSyncHttpRouteTest {
     @Test
     fun rejectsMissingAuthentication() = testApplication {
         application {
-            io.ktor.server.routing.routing {
+            routing {
                 route("/api/v1") { registerTrainingSyncHttpRoute(verifier, fakeRepository(), InMemoryIdempotencyRepository()) }
             }
         }
