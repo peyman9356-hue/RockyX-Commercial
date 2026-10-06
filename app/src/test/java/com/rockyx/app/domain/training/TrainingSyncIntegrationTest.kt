@@ -26,20 +26,24 @@ class TrainingSyncIntegrationTest {
                 listOf(
                     TrainingSyncEvent("ev-2","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",dogId="d1"),
                     TrainingSyncEvent("ev-3","EVIDENCE","e1","evidence", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",attemptId="a1"),
+                    TrainingSyncEvent("ev-4","EVALUATION","eval-1","evaluation", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",attemptIds=listOf("a1"),evidenceIds=listOf("e1")),
+                    TrainingSyncEvent("ev-5","DECISION","decision-1","decision", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",basisEvaluationIds=listOf("eval-1")),
                     TrainingSyncEvent("ev-1","SESSION","sync-int-1","session", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1")
                 )
             )
             val first = g.applySync(envelope, session, registry)
             assertTrue(first.accepted)
-            assertEquals(listOf("ev-1","ev-2","ev-3"), first.acceptedEventIds)
+            assertEquals(listOf("ev-1","ev-2","ev-3","ev-4","ev-5"), first.acceptedEventIds)
             assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-int-1") })
             assertEquals("attempt", TrainingDurableStore(context).use { it.readImmutable("ATTEMPT","a1") })
             assertEquals("evidence", TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","e1") })
+            assertEquals("evaluation", TrainingDurableStore(context).use { it.readImmutable("EVALUATION","eval-1") })
+            assertEquals("decision", TrainingDurableStore(context).use { it.readImmutable("DECISION","decision-1") })
 
             val second = g.applySync(envelope, session, registry)
             assertTrue(second.accepted)
             assertTrue(second.acceptedEventIds.isEmpty())
-            assertEquals(listOf("ev-1","ev-2","ev-3"), second.duplicateEventIds)
+            assertEquals(listOf("ev-1","ev-2","ev-3","ev-4","ev-5"), second.duplicateEventIds)
         }
     }
 
