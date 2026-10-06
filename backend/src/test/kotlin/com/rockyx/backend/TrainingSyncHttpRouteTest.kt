@@ -18,6 +18,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.testing.testApplication
 import io.ktor.server.routing.route
@@ -27,6 +28,19 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+
+private fun Application.configureTrainingSyncTest(
+    verifier: AccessTokenVerifier,
+    repository: TrainingSyncTransportRepository,
+    idempotency: InMemoryIdempotencyRepository
+) {
+    install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
+    routing {
+        route("/api/v1") {
+            registerTrainingSyncHttpRoute(verifier, repository, idempotency)
+        }
+    }
+}
 
 class TrainingSyncHttpRouteTest {
     private val json = Json { encodeDefaults = true }
@@ -59,9 +73,7 @@ class TrainingSyncHttpRouteTest {
     @Test
     fun rejectsMissingAuthentication() = testApplication {
         application {
-            routing {
-                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, fakeRepository(), InMemoryIdempotencyRepository()) }
-            }
+            configureTrainingSyncTest(verifier, fakeRepository(), InMemoryIdempotencyRepository())
         }
         val response = client.post("/api/v1/training/sync") {
             contentType(ContentType.Application.Json)
