@@ -347,4 +347,45 @@ class TrainingPersistenceGatewayTest {
         assertEquals(listOf("active-parent"), active.map { it.evidenceId })
     }
 
+    @Test fun invalidVersionPinDurablyInvalidatesExistingSession() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("INVALIDATE", "1", "VALID"), PolicyVersion("INVALIDATE_POLICY", "1", "VALID"))
+            val session = TrainingSession(
+                "invalidate-session","d1","sit","c1",emptyList(),
+                ruleVersionId="INVALIDATE:1",policyVersionId="INVALIDATE_POLICY:1"
+            )
+            assertTrue(g.appendSession(session,"invalidate-session"))
+
+            val envelope = TrainingSyncEnvelope(
+                "invalidate-session","d1","INVALIDATE:1","INVALIDATE_POLICY:1",emptyList()
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.applySync(envelope, session, TrainingVersionRegistry(emptyList(), emptyList()))
+            }
+            assertEquals(
+                SessionStatus.INVALID,
+                TrainingDurableStore(context).use { it.readSessionStatus("invalidate-session") }
+            )
+
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("INVALIDATE","1","VALID")),
+                listOf(PolicyVersion("INVALIDATE_POLICY","1","VALID"))
+            )
+            val blocked = envelope.copy(
+                events = listOf(
+                    TrainingSyncEvent(
+                        "blocked-attempt","ATTEMPT","blocked-attempt","attempt",
+                        "INVALIDATE:1","INVALIDATE_POLICY:1",
+                        sessionId="invalidate-session",dogId="d1"
+                    )
+                )
+            )
+            val result = g.applySync(blocked, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_SESSION_INVALID") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("ATTEMPT","blocked-attempt") })
+        }
+    }
+
+
 }
