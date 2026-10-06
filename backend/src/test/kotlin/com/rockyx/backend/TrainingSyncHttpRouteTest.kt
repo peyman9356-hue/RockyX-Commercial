@@ -86,9 +86,7 @@ class TrainingSyncHttpRouteTest {
     @Test
     fun rejectsMissingIdempotencyKey() = testApplication {
         application {
-            io.ktor.server.routing.routing {
-                registerTrainingSyncHttpRoute(verifier, fakeRepository(), InMemoryIdempotencyRepository())
-            }
+            configureTrainingSyncTest(verifier, fakeRepository(), InMemoryIdempotencyRepository())
         }
         val response = client.post("/api/v1/training/sync") {
             contentType(ContentType.Application.Json)
@@ -103,10 +101,7 @@ class TrainingSyncHttpRouteTest {
     fun acceptsAuthenticatedEnvelopeAndPreservesTransportResponse() = testApplication {
         val repository = fakeRepository()
         application {
-            install(io.ktor.server.plugins.contentnegotiation.ContentNegotiation) { json() }
-            io.ktor.server.routing.routing {
-                route("/api/v1") { registerTrainingSyncHttpRoute(verifier, repository, InMemoryIdempotencyRepository()) }
-            }
+            configureTrainingSyncTest(verifier, repository, InMemoryIdempotencyRepository())
         }
         val response = client.post("/api/v1/training/sync") {
             contentType(ContentType.Application.Json)
