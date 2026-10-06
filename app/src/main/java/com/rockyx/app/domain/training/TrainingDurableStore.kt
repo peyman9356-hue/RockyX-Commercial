@@ -7,15 +7,15 @@ import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
 
-class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 4) {
+class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 5) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("PRAGMA foreign_keys=ON")
         db.execSQL("CREATE TABLE rule_versions (rule_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(rule_id, version))")
         db.execSQL("CREATE TABLE policy_versions (policy_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(policy_id, version))")
-        db.execSQL("CREATE TABLE client_events (client_generated_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, identity_hash TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE client_events (client_generated_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, identity_hash TEXT NOT NULL, legacy_identity INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE immutable_records (record_type TEXT NOT NULL, record_id TEXT NOT NULL, payload_hash TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(record_type, record_id))")
         db.execSQL("CREATE TABLE evidence_successors (parent_id TEXT PRIMARY KEY, child_id TEXT NOT NULL UNIQUE)")
-        db.execSQL("CREATE TABLE record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, rule_version_id TEXT, policy_version_id TEXT, evidence_status TEXT, supersedes_record_id TEXT, PRIMARY KEY(record_type, record_id))")
+        db.execSQL("CREATE TABLE record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, rule_version_id TEXT, policy_version_id TEXT, evidence_status TEXT, supersedes_record_id TEXT, session_status TEXT, PRIMARY KEY(record_type, record_id))")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -31,6 +31,10 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             db.execSQL("ALTER TABLE record_scopes ADD COLUMN policy_version_id TEXT")
             db.execSQL("ALTER TABLE record_scopes ADD COLUMN evidence_status TEXT")
             db.execSQL("ALTER TABLE record_scopes ADD COLUMN supersedes_record_id TEXT")
+        }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE client_events ADD COLUMN legacy_identity INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE record_scopes ADD COLUMN session_status TEXT")
         }
     }
 
