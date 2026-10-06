@@ -24,8 +24,8 @@ class TrainingSyncIntegrationTest {
             val envelope = TrainingSyncEnvelope(
                 "sync-int-1","d1","SYNC:1","SYNC_POLICY:1",
                 listOf(
-                    TrainingSyncEvent("ev-2","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1"),
-                    TrainingSyncEvent("ev-3","EVIDENCE","e1","evidence", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1"),
+                    TrainingSyncEvent("ev-2","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",dogId="d1"),
+                    TrainingSyncEvent("ev-3","EVIDENCE","e1","evidence", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1",attemptId="a1"),
                     TrainingSyncEvent("ev-1","SESSION","sync-int-1","session", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-1")
                 )
             )
@@ -123,6 +123,62 @@ class TrainingSyncIntegrationTest {
             }
             assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-int-duplicate-record") })
             assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","never-created") })
+        }
+    }
+
+
+    @Test fun syncRejectsEvidenceWithUnknownAttemptWithoutMutation() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-ref-1","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(listOf(RuleVersion("SYNC","1","VALID")), listOf(PolicyVersion("SYNC_POLICY","1","VALID")))
+            val envelope = TrainingSyncEnvelope("sync-ref-1","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("s1","SESSION","sync-ref-1","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-1"),
+                    TrainingSyncEvent("e1","EVIDENCE","ev1","evidence","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-1",attemptId="missing-attempt")
+                ))
+            val result = g.applySync(envelope, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_REFERENCE_NOT_FOUND:ATTEMPT:missing-attempt") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-ref-1") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","ev1") })
+        }
+    }
+
+    @Test fun syncRejectsEvaluationWithUnknownReferenceWithoutMutation() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-ref-2","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(listOf(RuleVersion("SYNC","1","VALID")), listOf(PolicyVersion("SYNC_POLICY","1","VALID")))
+            val envelope = TrainingSyncEnvelope("sync-ref-2","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("s1","SESSION","sync-ref-2","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-2"),
+                    TrainingSyncEvent("a1","ATTEMPT","attempt-1","attempt","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-2",dogId="d1"),
+                    TrainingSyncEvent("v1","EVIDENCE","evidence-1","evidence","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-2",attemptId="attempt-1"),
+                    TrainingSyncEvent("x1","EVALUATION","eval-1","evaluation","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-2",attemptIds=listOf("attempt-1"),evidenceIds=listOf("missing-evidence"))
+                ))
+            val result = g.applySync(envelope, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_REFERENCE_NOT_FOUND:EVIDENCE:missing-evidence") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-ref-2") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVALUATION","eval-1") })
+        }
+    }
+
+    @Test fun syncRejectsDecisionWithUnknownBasisEvaluationWithoutMutation() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-ref-3","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(listOf(RuleVersion("SYNC","1","VALID")), listOf(PolicyVersion("SYNC_POLICY","1","VALID")))
+            val envelope = TrainingSyncEnvelope("sync-ref-3","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("s1","SESSION","sync-ref-3","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-3"),
+                    TrainingSyncEvent("d1","DECISION","decision-1","decision","SYNC:1","SYNC_POLICY:1",sessionId="sync-ref-3",basisEvaluationIds=listOf("missing-evaluation"))
+                ))
+            val result = g.applySync(envelope, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_REFERENCE_NOT_FOUND:EVALUATION:missing-evaluation") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("DECISION","decision-1") })
         }
     }
 
