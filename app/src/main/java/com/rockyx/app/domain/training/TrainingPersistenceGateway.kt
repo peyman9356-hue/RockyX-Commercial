@@ -46,6 +46,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         require(attempt.attemptId.isNotBlank() && attempt.clientGeneratedId.isNotBlank()) { "INVALID_ATTEMPT_IDENTITY" }
         store.requireImmutableRecord("SESSION", attempt.sessionId)
         require(store.requireRecordSession("SESSION", attempt.sessionId) == attempt.sessionId) { "ATTEMPT_SESSION_MISMATCH" }
+        val sessionPins = store.requireRecordVersionPins("SESSION", attempt.sessionId)
         val sessionDogId = store.readRecordDog("SESSION", attempt.sessionId)
         require(sessionDogId == null || sessionDogId == attempt.dogId) { "ATTEMPT_DOG_MISMATCH" }
         return store.appendAttempt(
@@ -54,7 +55,9 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             canonicalPayload,
             attempt.createdAt,
             attempt.sessionId,
-            attempt.dogId
+            attempt.dogId,
+            sessionPins.first,
+            sessionPins.second
         )
     }
 
@@ -151,8 +154,18 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
      */
     fun applySync(envelope: TrainingSyncEnvelope, session: TrainingSession, registry: TrainingVersionRegistry): SyncApplyResult {
         val validation = TrainingSyncValidator.validate(envelope, session, registry)
-        require(validation.accepted) { "SYNC_REJECTED:" + validation.rejections.joinToString(",") }
-        validatePinnedSession(session)
+        if (!validation.accepted) {
+            if (validation.rejections.contains(SyncRejectionCode.INVALID_SESSION)) {
+                store.invalidateSessionIfPresent(session.sessionId)
+            }
+            require(false) { "SYNC_REJECTED:" + validation.rejections.joinToString(",") }
+        }
+        try {
+            validatePinnedSession(session)
+        } catch (e: IllegalArgumentException) {
+            store.invalidateSessionIfPresent(session.sessionId)
+            throw e
+        }
         val normalizedEvents = envelope.events.map { event ->
             if (event.recordType in setOf("SESSION", "ATTEMPT", "EVIDENCE", "DECISION") && event.dogId.isBlank()) {
                 event.copy(dogId = session.dogId)
