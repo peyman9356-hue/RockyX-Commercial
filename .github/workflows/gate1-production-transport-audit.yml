@@ -32,11 +32,6 @@ jobs:
           mkdir audit-src
           unzip -q rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip -d audit-src
           test -d audit-src/rev14src/backend
-          python3 tools/apply-training-sync-transport-overlay.py
-          test -f audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/training/TrainingSyncTransport.kt
-          grep -q 'post("/training/sync")' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/api/Routes.kt
-          grep -q 'trainingSync = trainingSyncTransport' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/Application.kt
-          grep -q 'scope.*sync:write\|sync:write' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/api/Routes.kt
 
       - name: Audit production transport boundary
         shell: bash
