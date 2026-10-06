@@ -122,7 +122,14 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         val validation = TrainingSyncValidator.validate(envelope, session, registry)
         require(validation.accepted) { "SYNC_REJECTED:" + validation.rejections.joinToString(",") }
         validatePinnedSession(session)
-        return store.appendSyncBatch(envelope.events)
+        val normalizedEvents = envelope.events.map { event ->
+            if (event.recordType in setOf("SESSION", "ATTEMPT", "EVIDENCE", "DECISION") && event.dogId.isBlank()) {
+                event.copy(dogId = session.dogId)
+            } else {
+                event
+            }
+        }
+        return store.appendSyncBatch(normalizedEvents)
     }
 
     override fun close() { store.close() }
