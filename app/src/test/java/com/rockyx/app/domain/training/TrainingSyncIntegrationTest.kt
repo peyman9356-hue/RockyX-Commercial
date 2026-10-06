@@ -89,4 +89,41 @@ class TrainingSyncIntegrationTest {
             assertEquals("session-a", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-int-3") })
         }
     }
+    @Test fun syncInvalidSessionPinIsRejectedDeterministically() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-int-invalid-pin","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(emptyList(), emptyList())
+            val envelope = TrainingSyncEnvelope("sync-int-invalid-pin","d1","SYNC:1","SYNC_POLICY:1",emptyList())
+            val result = TrainingSyncValidator.validate(envelope, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.contains(SyncRejectionCode.INVALID_SESSION))
+        }
+    }
+
+    @Test fun syncDuplicateRecordIdentityIsRejectedAtomically() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-int-duplicate-record","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+            val first = TrainingSyncEnvelope(
+                "sync-int-duplicate-record","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(TrainingSyncEvent("ev-1","SESSION","sync-int-duplicate-record","session", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-duplicate-record"))
+            )
+            assertTrue(g.applySync(first, session, registry).accepted)
+
+            val conflicting = first.copy(events=listOf(
+                TrainingSyncEvent("ev-2","SESSION","sync-int-duplicate-record","different", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-duplicate-record")
+            ))
+            assertThrows(RuntimeException::class.java) {
+                g.applySync(conflicting, session, registry)
+            }
+            assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-int-duplicate-record") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","never-created") })
+        }
+    }
+
 }
