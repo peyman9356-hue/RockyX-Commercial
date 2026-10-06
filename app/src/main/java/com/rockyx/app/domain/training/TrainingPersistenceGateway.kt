@@ -45,6 +45,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         require(attempt.sessionId.isNotBlank() && attempt.dogId.isNotBlank()) { "INVALID_ATTEMPT_REFERENCE" }
         require(attempt.attemptId.isNotBlank() && attempt.clientGeneratedId.isNotBlank()) { "INVALID_ATTEMPT_IDENTITY" }
         store.requireImmutableRecord("SESSION", attempt.sessionId)
+        store.requireSessionActive(attempt.sessionId)
         require(store.requireRecordSession("SESSION", attempt.sessionId) == attempt.sessionId) { "ATTEMPT_SESSION_MISMATCH" }
         val sessionPins = store.requireRecordVersionPins("SESSION", attempt.sessionId)
         val sessionDogId = store.readRecordDog("SESSION", attempt.sessionId)
@@ -66,6 +67,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
 
     fun appendEvidence(evidence: SitEvidence, canonicalPayload: String): Boolean {
         store.requireImmutableRecord("SESSION", evidence.sessionId)
+        store.requireSessionActive(evidence.sessionId)
         store.requireImmutableRecord("ATTEMPT", evidence.attemptId)
         require(evidence.dogId.isNotBlank()) { "EVIDENCE_DOG_REQUIRED" }
         require(store.requireRecordSession("ATTEMPT", evidence.attemptId) == evidence.sessionId) { "EVIDENCE_ATTEMPT_SESSION_MISMATCH" }
@@ -98,6 +100,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
 
     fun appendEvaluation(evaluation: Evaluation, canonicalPayload: String): Boolean {
         store.requireImmutableRecord("SESSION", evaluation.sessionId)
+        store.requireSessionActive(evaluation.sessionId)
         val sessionPins = store.requireRecordVersionPins("SESSION", evaluation.sessionId)
         require(evaluation.ruleVersionId == sessionPins.first) { "EVALUATION_RULE_VERSION_MISMATCH" }
         require(evaluation.policyVersionId == sessionPins.second) { "EVALUATION_POLICY_VERSION_MISMATCH" }
@@ -131,6 +134,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         }
         val basisSessions = basisEvaluations.map { store.requireRecordSession("EVALUATION", it.first) }.distinct()
         require(basisSessions.size == 1) { "DECISION_BASIS_SESSION_MISMATCH" }
+        store.requireSessionActive(basisSessions.single())
         val sessionPins = store.requireRecordVersionPins("SESSION", basisSessions.single())
         require(decision.policyVersionId == sessionPins.second) { "DECISION_POLICY_VERSION_MISMATCH" }
         require(basisEvaluations.all { it.second.second == decision.policyVersionId }) {
