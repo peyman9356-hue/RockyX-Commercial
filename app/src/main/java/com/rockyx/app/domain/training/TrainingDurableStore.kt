@@ -224,6 +224,22 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     val sessionExists = db.query("immutable_records", arrayOf("record_id"), "record_type='SESSION' AND record_id=?", arrayOf(event.sessionId), null, null, null).use { it.moveToFirst() }
                     require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
                 }
+                when (event.recordType) {
+                    "EVIDENCE" -> {
+                        require(event.attemptId.isNotBlank()) { "SYNC_EVIDENCE_ATTEMPT_REQUIRED:" + event.recordId }
+                        requireImmutable(db, "ATTEMPT", event.attemptId)
+                    }
+                    "EVALUATION" -> {
+                        require(event.attemptIds.isNotEmpty()) { "SYNC_EVALUATION_ATTEMPTS_REQUIRED:" + event.recordId }
+                        require(event.evidenceIds.isNotEmpty()) { "SYNC_EVALUATION_EVIDENCE_REQUIRED:" + event.recordId }
+                        event.attemptIds.forEach { requireImmutable(db, "ATTEMPT", it) }
+                        event.evidenceIds.forEach { requireImmutable(db, "EVIDENCE", it) }
+                    }
+                    "DECISION" -> {
+                        require(event.basisEvaluationIds == event.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
+                        event.basisEvaluationIds.forEach { requireImmutable(db, "EVALUATION", it) }
+                    }
+                }
                 if (event.recordType == "EVIDENCE" && event.supersedesRecordId != null) {
                     val parentExists = db.query("immutable_records", arrayOf("record_id"), "record_type='EVIDENCE' AND record_id=?", arrayOf(event.supersedesRecordId), null, null, null).use { it.moveToFirst() }
                     require(parentExists) { "Superseded evidence must already exist." }
@@ -247,6 +263,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         } catch (e: IllegalArgumentException) {
             return SyncApplyResult(false, emptyList(), emptyList(), listOf(e.message ?: "SYNC_REJECTED"))
         } finally { db.endTransaction() }
+    }
+
+    private fun requireImmutable(db: SQLiteDatabase, recordType: String, recordId: String) {
+        require(recordId.isNotBlank()) { "SYNC_REFERENCE_REQUIRED:" + recordType }
+        val exists = db.query("immutable_records", arrayOf("record_id"), "record_type=? AND record_id=?", arrayOf(recordType, recordId), null, null, null).use { it.moveToFirst() }
+        require(exists) { "SYNC_REFERENCE_NOT_FOUND:" + recordType + ":" + recordId }
     }
 
     private fun syncRecordRank(recordType: String): Int = when (recordType) {
