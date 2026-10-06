@@ -6,6 +6,7 @@ data class TrainingSyncDeliveryResult(
     val error: String? = null
 )
 
+/** Transport-only boundary; it does not evaluate or mutate Gate 1 semantics. */
 fun interface TrainingSyncSender {
     suspend fun send(envelope: TrainingSyncEnvelope, idempotencyKey: String): TrainingSyncDeliveryResult
 }
