@@ -31,14 +31,15 @@ http_test_dst.write_text(http_test_src.read_text(encoding="utf-8"), encoding="ut
 
 
 client = root / "app/src/main/java/com/rockyx/app/data/network/RockyXApiClient.kt"
-client_text = client.read_text(encoding="utf-8")
+if client.exists():
+    client_text = client.read_text(encoding="utf-8")
 
-client_anchor = '''    suspend fun verifyGooglePlayPurchase(productId: String, purchaseToken: String): RemoteVerifiedPurchase = withContext(Dispatchers.IO) {
+    client_anchor = '''    suspend fun verifyGooglePlayPurchase(productId: String, purchaseToken: String): RemoteVerifiedPurchase = withContext(Dispatchers.IO) {
 '''
-if client_text.count(client_anchor) != 1:
-    raise SystemExit("RockyXApiClient training sync insertion anchor mismatch")
+    if client_text.count(client_anchor) != 1:
+        raise SystemExit("RockyXApiClient training sync insertion anchor mismatch")
 
-training_method = '''    suspend fun applyTrainingSync(
+    training_method = '''    suspend fun applyTrainingSync(
         envelope: RemoteTrainingSyncEnvelope,
         idempotencyKey: String
     ): RemoteTrainingSyncResult = withContext(Dispatchers.IO) {
@@ -105,9 +106,9 @@ training_method = '''    suspend fun applyTrainingSync(
     }
 
 '''
-client_text=client_text.replace(client_anchor,training_method+client_anchor,1)
+    client_text=client_text.replace(client_anchor,training_method+client_anchor,1)
 
-client_text += '''
+    client_text += '''
 data class RemoteTrainingSyncEvent(
     val clientGeneratedId: String,
     val recordType: String,
@@ -145,7 +146,10 @@ private fun JSONArray?.toStringList(): List<String> =
         for (i in 0 until length()) add(getString(i))
     }
 '''
-client.write_text(client_text, encoding="utf-8")
+    client.write_text(client_text, encoding="utf-8")
+else:
+    print("Android network client source is not present in the v8 archive; server boundary will be tested independently.")
+    
 routes = target / "main/kotlin/com/rockyx/backend/api/Routes.kt"
 text = routes.read_text(encoding="utf-8")
 
