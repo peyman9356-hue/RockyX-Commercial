@@ -36,7 +36,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
         }
         store.appendSession(
             session.sessionId, session.dogId, canonicalPayload, session.createdAt,
-            session.ruleVersionId, session.policyVersionId
+            session.ruleVersionId, session.policyVersionId, session.status
         )
         return true
     }
