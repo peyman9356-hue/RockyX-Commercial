@@ -82,6 +82,57 @@ jobs:
             audit-src/rev14src/settings.gradle.kts
           if-no-files-found: error
           retention-days: 14
+  production_transport_integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rockyx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rockyx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ROCKYX_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/rockyx
+      ROCKYX_DATABASE_USER: postgres
+      ROCKYX_DATABASE_PASSWORD: postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Extract and validate project layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf rockyx-src
+          mkdir rockyx-src
+          unzip -q rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip -d rockyx-src
+          test -f rockyx-src/rev14src/backend/build.gradle.kts
+
+      - name: Overlay tracked Production Training Sync transport
+        run: python3 tools/apply-training-sync-transport-overlay.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Run production transport PostgreSQL integration tests
+        working-directory: rockyx-src/rev14src
+        run: gradle --no-daemon :backend:test --tests com.rockyx.backend.TrainingSyncTransportPostgresIntegrationTest
+
   build:
     runs-on: ubuntu-latest
 
@@ -175,6 +226,9 @@ jobs:
           test -s "$TRAIN_TEST_DST/TrainingPersistenceGatewayTest.kt"
 
           echo "Gate 1 + Library tracked source overlay verified: ${#required[@]} training files + 4 library files + library tests"
+
+      - name: Apply Production Training Sync transport overlay
+        run: python3 tools/apply-training-sync-transport-overlay.py
 
       - name: Apply Library UI integration overlay
         run: python3 tools/apply-library-foundation-overlay.py
