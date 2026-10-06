@@ -534,7 +534,8 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ruleVersionId: String? = null,
         policyVersionId: String? = null,
         evidenceStatus: EvidenceStatus? = null,
-        supersedesRecordId: String? = null
+        supersedesRecordId: String? = null,
+        sessionStatus: SessionStatus? = null
     ) {
         require(recordType.isNotBlank() && recordId.isNotBlank() && sessionId.isNotBlank()) { "INVALID_RECORD_SCOPE" }
         db.insertOrThrow("record_scopes", null, ContentValues().apply {
@@ -639,7 +640,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         require(scope == expectedSessionId) { "SYNC_REFERENCE_SESSION_MISMATCH:$recordType:$recordId" }
     }
 
-    private fun requireSessionActive(db: SQLiteDatabase, sessionId: String) {
+    fun requireSessionActive(db: SQLiteDatabase, sessionId: String) {
         require(sessionId.isNotBlank()) { "SESSION_ID_REQUIRED" }
         db.query(
             "record_scopes",
