@@ -24,6 +24,123 @@ integration_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncTranspor
 integration_dst = root / "backend/src/test/kotlin/com/rockyx/backend/TrainingSyncTransportPostgresIntegrationTest.kt"
 integration_dst.write_text(integration_src.read_text(encoding="utf-8"), encoding="utf-8")
 
+
+client = root / "app/src/main/java/com/rockyx/app/data/network/RockyXApiClient.kt"
+client_text = client.read_text(encoding="utf-8")
+
+client_anchor = '''    suspend fun verifyGooglePlayPurchase(productId: String, purchaseToken: String): RemoteVerifiedPurchase = withContext(Dispatchers.IO) {
+'''
+if client_text.count(client_anchor) != 1:
+    raise SystemExit("RockyXApiClient training sync insertion anchor mismatch")
+
+training_method = '''    suspend fun applyTrainingSync(
+        envelope: RemoteTrainingSyncEnvelope,
+        idempotencyKey: String
+    ): RemoteTrainingSyncResult = withContext(Dispatchers.IO) {
+        require(base.isNotBlank()) { "Rocky X API base URL is not configured" }
+        require(idempotencyKey.matches(Regex("[A-Za-z0-9._:-]{16,128}"))) { "Invalid Idempotency-Key" }
+        require(envelope.events.size <= 200) { "Too many training sync events" }
+
+        fun strings(values: List<String>): JSONArray = JSONArray().apply {
+            values.forEach { put(it) }
+        }
+
+        val events = JSONArray().apply {
+            envelope.events.forEach { event ->
+                put(
+                    JSONObject()
+                        .put("clientGeneratedId", event.clientGeneratedId)
+                        .put("recordType", event.recordType)
+                        .put("recordId", event.recordId)
+                        .put("canonicalPayload", event.canonicalPayload)
+                        .put("ruleVersionId", event.ruleVersionId)
+                        .put("policyVersionId", event.policyVersionId)
+                        .put("supersedesRecordId", event.supersedesRecordId)
+                        .put("sessionId", event.sessionId)
+                        .put("dogId", event.dogId)
+                        .put("attemptId", event.attemptId)
+                        .put("evidenceIds", strings(event.evidenceIds))
+                        .put("attemptIds", strings(event.attemptIds))
+                        .put("basisEvaluationIds", strings(event.basisEvaluationIds))
+                        .put("evidenceStatus", event.evidenceStatus)
+                )
+            }
+        }
+
+        val requestJson = JSONObject()
+            .put("sessionId", envelope.sessionId)
+            .put("dogId", envelope.dogId)
+            .put("ruleVersionId", envelope.ruleVersionId)
+            .put("policyVersionId", envelope.policyVersionId)
+            .put("events", events)
+            .toString()
+
+        require(requestJson.toByteArray(Charsets.UTF_8).size <= 2 * 1024 * 1024) {
+            "Training sync request is too large"
+        }
+
+        val response = httpClient.post("$base/api/v1/training/sync") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            accept(ContentType.Application.Json)
+            header("Idempotency-Key", idempotencyKey)
+            setBody(requestJson)
+        }
+
+        val body = response.bodyAsText()
+        require(body.length <= MAX_RESPONSE_BYTES) { "API response is too large" }
+        if (!response.status.isSuccess()) throw apiException(response.status, body)
+
+        val o = JSONObject(body)
+        RemoteTrainingSyncResult(
+            accepted = o.optBoolean("accepted", false),
+            acceptedEventIds = o.optJSONArray("acceptedEventIds").toStringList(),
+            duplicateEventIds = o.optJSONArray("duplicateEventIds").toStringList(),
+            rejections = o.optJSONArray("rejections").toStringList()
+        )
+    }
+
+'''
+client_text=client_text.replace(client_anchor,training_method+client_anchor,1)
+
+client_text += '''
+data class RemoteTrainingSyncEvent(
+    val clientGeneratedId: String,
+    val recordType: String,
+    val recordId: String,
+    val canonicalPayload: String,
+    val ruleVersionId: String,
+    val policyVersionId: String,
+    val supersedesRecordId: String? = null,
+    val sessionId: String,
+    val dogId: String,
+    val attemptId: String = "",
+    val evidenceIds: List<String> = emptyList(),
+    val attemptIds: List<String> = emptyList(),
+    val basisEvaluationIds: List<String> = emptyList(),
+    val evidenceStatus: String? = null
+)
+
+data class RemoteTrainingSyncEnvelope(
+    val sessionId: String,
+    val dogId: String,
+    val ruleVersionId: String,
+    val policyVersionId: String,
+    val events: List<RemoteTrainingSyncEvent>
+)
+
+data class RemoteTrainingSyncResult(
+    val accepted: Boolean,
+    val acceptedEventIds: List<String>,
+    val duplicateEventIds: List<String>,
+    val rejections: List<String>
+)
+
+private fun JSONArray?.toStringList(): List<String> =
+    if (this == null) emptyList() else buildList {
+        for (i in 0 until length()) add(getString(i))
+    }
+'''
+client.write_text(client_text, encoding="utf-8")
 routes = target / "main/kotlin/com/rockyx/backend/api/Routes.kt"
 text = routes.read_text(encoding="utf-8")
 
