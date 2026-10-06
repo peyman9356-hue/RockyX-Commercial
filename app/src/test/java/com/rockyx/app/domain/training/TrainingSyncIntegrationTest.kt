@@ -39,6 +39,11 @@ class TrainingSyncIntegrationTest {
             assertEquals("evidence", TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","e1") })
             assertEquals("evaluation", TrainingDurableStore(context).use { it.readImmutable("EVALUATION","eval-1") })
             assertEquals("decision", TrainingDurableStore(context).use { it.readImmutable("DECISION","decision-1") })
+            assertEquals("d1", TrainingDurableStore(context).use { it.readRecordDog("SESSION","sync-int-1") })
+            assertEquals("d1", TrainingDurableStore(context).use { it.readRecordDog("ATTEMPT","a1") })
+            assertEquals("d1", TrainingDurableStore(context).use { it.readRecordDog("EVIDENCE","e1") })
+            assertEquals("d1", TrainingDurableStore(context).use { it.readRecordDog("EVALUATION","eval-1") })
+            assertEquals("d1", TrainingDurableStore(context).use { it.readRecordDog("DECISION","decision-1") })
 
             val second = g.applySync(envelope, session, registry)
             assertTrue(second.accepted)
@@ -339,6 +344,65 @@ class TrainingSyncIntegrationTest {
             assertTrue(supersedeResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:EVIDENCE:foreign-evidence") })
             assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","target-evidence-foreign-supersede") })
         }
+    }
+
+    @Test fun syncRejectsForeignDogReferenceAndPersistsDerivedDogScope() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-dog-scope","dog-1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+
+            val sessionEnvelope = TrainingSyncEnvelope(
+                "sync-dog-scope","dog-1","SYNC:1","SYNC_POLICY:1",
+                listOf(TrainingSyncEvent("dog-session","SESSION","sync-dog-scope","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-dog-scope"))
+            )
+            assertTrue(g.applySync(sessionEnvelope, session, registry).accepted)
+            assertEquals("dog-1", TrainingDurableStore(context).use { it.readRecordDog("SESSION","sync-dog-scope") })
+
+            TrainingDurableStore(context).use { store ->
+                store.appendAttempt("foreign-attempt","foreign-event","foreign-attempt",1L,"sync-dog-scope","dog-2")
+            }
+
+            val evidence = TrainingSyncEnvelope(
+                "sync-dog-scope","dog-1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent(
+                        "dog-evidence","EVIDENCE","dog-evidence","evidence","SYNC:1","SYNC_POLICY:1",
+                        sessionId="sync-dog-scope", attemptId="foreign-attempt"
+                    )
+                )
+            )
+            val result = g.applySync(evidence, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_REFERENCE_DOG_MISMATCH:ATTEMPT:foreign-attempt") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","dog-evidence") })
+        }
+    }
+
+    @Test fun syncValidatorRejectsMalformedRecordIdentityAndDecisionBasis() {
+        val session = TrainingSession("sync-malformed","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+        val registry = TrainingVersionRegistry(
+            listOf(RuleVersion("SYNC","1","VALID")),
+            listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+        )
+        val blankRecord = TrainingSyncEnvelope(
+            "sync-malformed","d1","SYNC:1","SYNC_POLICY:1",
+            listOf(TrainingSyncEvent("blank-record","ATTEMPT","","attempt","SYNC:1","SYNC_POLICY:1",sessionId="sync-malformed",dogId="d1"))
+        )
+        val blankResult = TrainingSyncValidator.validate(blankRecord, session, registry)
+        assertFalse(blankResult.accepted)
+        assertTrue(blankResult.rejections.contains(SyncRejectionCode.EMPTY_RECORD_ID))
+
+        val emptyBasis = TrainingSyncEnvelope(
+            "sync-malformed","d1","SYNC:1","SYNC_POLICY:1",
+            listOf(TrainingSyncEvent("empty-basis","DECISION","decision-1","decision","SYNC:1","SYNC_POLICY:1",sessionId="sync-malformed"))
+        )
+        val basisResult = TrainingSyncValidator.validate(emptyBasis, session, registry)
+        assertFalse(basisResult.accepted)
+        assertTrue(basisResult.rejections.contains(SyncRejectionCode.DECISION_BASIS_REQUIRED))
     }
 
     @Test fun syncDuplicateRecordConflictIsReturnedAsStructuredRejection() {
