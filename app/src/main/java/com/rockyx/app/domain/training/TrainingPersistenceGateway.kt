@@ -58,7 +58,8 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             attempt.sessionId,
             attempt.dogId,
             sessionPins.first,
-            sessionPins.second
+            sessionPins.second,
+            attempt.evidenceIds
         )
     }
 
@@ -94,7 +95,8 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             scopeDogId = evidence.dogId,
             scopeRuleVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).first,
             scopePolicyVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).second,
-            evidenceStatus = evidence.status
+            evidenceStatus = evidence.status,
+            outboxAttemptId = evidence.attemptId
         )
     }
 
@@ -121,7 +123,9 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             createdAt = evaluation.createdAt,
             scopeSessionId = evaluation.sessionId,
             scopeRuleVersionId = sessionPins.first,
-            scopePolicyVersionId = sessionPins.second
+            scopePolicyVersionId = sessionPins.second,
+            outboxAttemptIds = evaluation.attemptIds,
+            outboxEvidenceIds = evaluation.evidenceIds
         )
     }
 
@@ -148,7 +152,8 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             createdAt = decision.createdAt,
             scopeSessionId = basisSessions.single(),
             scopeRuleVersionId = sessionPins.first,
-            scopePolicyVersionId = sessionPins.second
+            scopePolicyVersionId = sessionPins.second,
+            outboxBasisEvaluationIds = decision.basisEvaluationIds
         )
     }
 

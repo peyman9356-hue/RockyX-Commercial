@@ -6,8 +6,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
+import java.util.UUID
+import org.json.JSONArray
 
-class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 5) {
+class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 6) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("PRAGMA foreign_keys=ON")
         db.execSQL("CREATE TABLE rule_versions (rule_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(rule_id, version))")
@@ -16,6 +18,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         db.execSQL("CREATE TABLE immutable_records (record_type TEXT NOT NULL, record_id TEXT NOT NULL, payload_hash TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(record_type, record_id))")
         db.execSQL("CREATE TABLE evidence_successors (parent_id TEXT PRIMARY KEY, child_id TEXT NOT NULL UNIQUE)")
         db.execSQL("CREATE TABLE record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, rule_version_id TEXT, policy_version_id TEXT, evidence_status TEXT, supersedes_record_id TEXT, session_status TEXT, PRIMARY KEY(record_type, record_id))")
+        createTrainingSyncOutbox(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -35,6 +38,9 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         if (oldVersion < 5) {
             db.execSQL("ALTER TABLE client_events ADD COLUMN legacy_identity INTEGER NOT NULL DEFAULT 1")
             db.execSQL("ALTER TABLE record_scopes ADD COLUMN session_status TEXT")
+        }
+        if (oldVersion < 6) {
+            createTrainingSyncOutbox(db)
         }
     }
 
@@ -148,11 +154,22 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             "SESSION", sessionId, canonicalPayload, createdAt,
             sessionId = sessionId, dogId = dogId,
             ruleVersionId = ruleVersionId, policyVersionId = policyVersionId,
-            sessionStatus = sessionStatus
+            sessionStatus = sessionStatus,
+            outboxClientGeneratedId = "SESSION:" + sessionId
         )
     }
 
-    fun appendAttempt(attemptId: String, clientGeneratedId: String, canonicalPayload: String, createdAt: Long, sessionId: String, dogId: String, ruleVersionId: String? = null, policyVersionId: String? = null): Boolean {
+    fun appendAttempt(
+        attemptId: String,
+        clientGeneratedId: String,
+        canonicalPayload: String,
+        createdAt: Long,
+        sessionId: String,
+        dogId: String,
+        ruleVersionId: String? = null,
+        policyVersionId: String? = null,
+        evidenceIds: List<String> = emptyList()
+    ): Boolean {
         return appendEventAndImmutableRecord(
             eventId = clientGeneratedId,
             recordType = "ATTEMPT",
@@ -162,7 +179,8 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             scopeSessionId = sessionId,
             scopeDogId = dogId,
             scopeRuleVersionId = ruleVersionId,
-            scopePolicyVersionId = policyVersionId
+            scopePolicyVersionId = policyVersionId,
+            outboxEvidenceIds = evidenceIds
         )
     }
 
@@ -177,7 +195,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         policyVersionId: String? = null,
         evidenceStatus: EvidenceStatus? = null,
         supersedesRecordId: String? = null,
-        sessionStatus: SessionStatus? = null
+        sessionStatus: SessionStatus? = null,
+        outboxClientGeneratedId: String? = null,
+        outboxAttemptId: String = "",
+        outboxAttemptIds: List<String> = emptyList(),
+        outboxEvidenceIds: List<String> = emptyList(),
+        outboxBasisEvaluationIds: List<String> = emptyList()
     ) {
         require(recordType.isNotBlank() && recordId.isNotBlank())
         val db = writableDatabase
@@ -191,6 +214,25 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 putRecordScope(
                     db, recordType, recordId, sessionId, dogId,
                     ruleVersionId, policyVersionId, evidenceStatus, supersedesRecordId, sessionStatus
+                )
+            }
+            if (outboxClientGeneratedId != null) {
+                enqueueOutboxInTransaction(
+                    db = db,
+                    clientGeneratedId = outboxClientGeneratedId,
+                    recordType = recordType,
+                    recordId = recordId,
+                    sessionId = requireNotNull(sessionId),
+                    dogId = requireNotNull(dogId),
+                    canonicalPayload = canonicalPayload,
+                    ruleVersionId = requireNotNull(ruleVersionId),
+                    policyVersionId = requireNotNull(policyVersionId),
+                    supersedesRecordId = supersedesRecordId,
+                    attemptId = outboxAttemptId,
+                    attemptIds = outboxAttemptIds,
+                    evidenceIds = outboxEvidenceIds,
+                    basisEvaluationIds = outboxBasisEvaluationIds,
+                    evidenceStatus = evidenceStatus
                 )
             }
             db.setTransactionSuccessful()
@@ -207,7 +249,11 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         scopeDogId: String? = null,
         scopeRuleVersionId: String? = null,
         scopePolicyVersionId: String? = null,
-        evidenceStatus: EvidenceStatus? = null
+        evidenceStatus: EvidenceStatus? = null,
+        outboxAttemptId: String = "",
+        outboxAttemptIds: List<String> = emptyList(),
+        outboxEvidenceIds: List<String> = emptyList(),
+        outboxBasisEvaluationIds: List<String> = emptyList()
     ): Boolean {
         require(eventId.isNotBlank() && recordType.isNotBlank() && recordId.isNotBlank())
         val hash = sha256(canonicalPayload)
@@ -244,6 +290,23 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     evidenceStatus,
                     if (recordType == "EVIDENCE") supersedesEvidenceId else null
                 )
+                enqueueOutboxInTransaction(
+                    db = db,
+                    clientGeneratedId = eventId,
+                    recordType = recordType,
+                    recordId = recordId,
+                    sessionId = scopeSessionId,
+                    dogId = requireNotNull(scopeDogId),
+                    canonicalPayload = canonicalPayload,
+                    ruleVersionId = requireNotNull(scopeRuleVersionId),
+                    policyVersionId = requireNotNull(scopePolicyVersionId),
+                    supersedesRecordId = if (recordType == "EVIDENCE") supersedesEvidenceId else null,
+                    attemptId = outboxAttemptId,
+                    attemptIds = outboxAttemptIds,
+                    evidenceIds = outboxEvidenceIds,
+                    basisEvaluationIds = outboxBasisEvaluationIds,
+                    evidenceStatus = evidenceStatus
+                )
             }
             db.setTransactionSuccessful()
             return true
@@ -270,6 +333,131 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
+
+    private fun createTrainingSyncOutbox(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS training_sync_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_key TEXT NOT NULL UNIQUE,
+                client_generated_id TEXT NOT NULL UNIQUE,
+                record_type TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                dog_id TEXT NOT NULL,
+                canonical_payload TEXT NOT NULL,
+                rule_version_id TEXT NOT NULL,
+                policy_version_id TEXT NOT NULL,
+                supersedes_record_id TEXT,
+                attempt_id TEXT NOT NULL DEFAULT '',
+                attempt_ids_json TEXT NOT NULL DEFAULT '[]',
+                evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+                basis_evaluation_ids_json TEXT NOT NULL DEFAULT '[]',
+                evidence_status TEXT,
+                state TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at INTEGER NOT NULL,
+                last_error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_training_sync_outbox_ready ON training_sync_outbox(state, next_attempt_at)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_training_sync_outbox_session ON training_sync_outbox(session_id)")
+    }
+
+    private fun enqueueOutboxInTransaction(
+        db: SQLiteDatabase,
+        clientGeneratedId: String,
+        recordType: String,
+        recordId: String,
+        sessionId: String,
+        dogId: String,
+        canonicalPayload: String,
+        ruleVersionId: String,
+        policyVersionId: String,
+        supersedesRecordId: String?,
+        attemptId: String,
+        attemptIds: List<String>,
+        evidenceIds: List<String>,
+        basisEvaluationIds: List<String>,
+        evidenceStatus: EvidenceStatus?
+    ) {
+        require(clientGeneratedId.isNotBlank()) { "OUTBOX_CLIENT_ID_REQUIRED" }
+        val now = System.currentTimeMillis()
+        db.insertOrThrow("training_sync_outbox", null, ContentValues().apply {
+            put("delivery_key", "training:" + UUID.randomUUID().toString())
+            put("client_generated_id", clientGeneratedId)
+            put("record_type", recordType)
+            put("record_id", recordId)
+            put("session_id", sessionId)
+            put("dog_id", dogId)
+            put("canonical_payload", canonicalPayload)
+            put("rule_version_id", ruleVersionId)
+            put("policy_version_id", policyVersionId)
+            if (supersedesRecordId != null) put("supersedes_record_id", supersedesRecordId)
+            put("attempt_id", attemptId)
+            put("attempt_ids_json", JSONArray(attemptIds).toString())
+            put("evidence_ids_json", JSONArray(evidenceIds).toString())
+            put("basis_evaluation_ids_json", JSONArray(basisEvaluationIds).toString())
+            if (evidenceStatus != null) put("evidence_status", evidenceStatus.name)
+            put("state", "PENDING")
+            put("attempt_count", 0)
+            put("next_attempt_at", now)
+            put("created_at", now)
+            put("updated_at", now)
+        })
+    }
+
+    fun readPendingSyncOutbox(limit: Int = 50, now: Long = System.currentTimeMillis()): List<TrainingSyncOutboxEntry> {
+        require(limit in 1..200) { "OUTBOX_LIMIT_INVALID" }
+        return readableDatabase.query(
+            "training_sync_outbox",
+            null,
+            "state='PENDING' AND next_attempt_at<=?",
+            arrayOf(now.toString()),
+            null, null, "id ASC",
+            limit.toString()
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(TrainingSyncOutboxEntry.fromCursor(cursor))
+            }
+        }
+    }
+
+    fun markSyncOutboxInFlight(id: Long): Boolean =
+        writableDatabase.compileStatement(
+            "UPDATE training_sync_outbox SET state='IN_FLIGHT', updated_at=? WHERE id=? AND state='PENDING'"
+        ).apply {
+            bindLong(1, System.currentTimeMillis())
+            bindLong(2, id)
+        }.executeUpdateDelete() == 1
+
+    fun markSyncOutboxSucceeded(id: Long): Boolean =
+        writableDatabase.compileStatement(
+            "UPDATE training_sync_outbox SET state='SUCCEEDED', updated_at=?, last_error=NULL WHERE id=? AND state='IN_FLIGHT'"
+        ).apply {
+            bindLong(1, System.currentTimeMillis())
+            bindLong(2, id)
+        }.executeUpdateDelete() == 1
+
+    fun markSyncOutboxRetry(id: Long, error: String, nextAttemptAt: Long): Boolean =
+        writableDatabase.compileStatement(
+            "UPDATE training_sync_outbox SET state='PENDING', attempt_count=attempt_count+1, next_attempt_at=?, last_error=?, updated_at=? WHERE id=? AND state='IN_FLIGHT'"
+        ).apply {
+            bindLong(1, nextAttemptAt)
+            bindString(2, error.take(1000))
+            bindLong(3, System.currentTimeMillis())
+            bindLong(4, id)
+        }.executeUpdateDelete() == 1
+
+    fun readSyncOutbox(id: Long): TrainingSyncOutboxEntry? =
+        readableDatabase.query(
+            "training_sync_outbox",
+            null,
+            "id=?",
+            arrayOf(id.toString()),
+            null, null, null
+        ).use { if (it.moveToFirst()) TrainingSyncOutboxEntry.fromCursor(it) else null }
 
     fun requireImmutableRecord(recordType: String, recordId: String) {
         require(recordType.isNotBlank() && recordId.isNotBlank())
