@@ -1,6 +1,6 @@
 from pathlib import Path
 
-root = Path("rockyx-src/rev14src")
+root = Path("audit-src/rev14src")
 tracked = Path("backend/src")
 target = root / "backend/src"
 
