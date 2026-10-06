@@ -122,9 +122,9 @@ class TrainingSyncIntegrationTest {
             val conflicting = first.copy(events=listOf(
                 TrainingSyncEvent("ev-2","SESSION","sync-int-duplicate-record","different", "SYNC:1","SYNC_POLICY:1",sessionId="sync-int-duplicate-record")
             ))
-            assertThrows(RuntimeException::class.java) {
-                g.applySync(conflicting, session, registry)
-            }
+            val result = g.applySync(conflicting, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_RECORD_ID_CONFLICT") })
             assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-int-duplicate-record") })
             assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","never-created") })
         }
