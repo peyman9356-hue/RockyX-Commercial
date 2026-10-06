@@ -1,6 +1,8 @@
 from pathlib import Path
 
-root = Path("audit-src/rev14src")
+root = next((candidate for candidate in (Path("audit-src/rev14src"), Path("rockyx-src/rev14src")) if candidate.exists()), None)
+if root is None:
+    raise SystemExit("Production source root not found: expected audit-src/rev14src or rockyx-src/rev14src")
 tracked = Path("backend/src")
 target = root / "backend/src"
 
