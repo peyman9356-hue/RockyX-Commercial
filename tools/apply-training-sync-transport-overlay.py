@@ -13,6 +13,7 @@ for source in transport_src.glob("*.kt"):
 
 migration_src = tracked / "main/resources/db/migration/V12__training_sync_transport.sql"
 migration_dst = root / "backend/src/main/resources/db/migration/V12__training_sync_transport.sql"
+migration_dst.parent.mkdir(parents=True, exist_ok=True)
 migration_dst.write_text(migration_src.read_text(encoding="utf-8"), encoding="utf-8")
 
 test_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncTransportPolicyTest.kt"
