@@ -261,6 +261,13 @@ class TrainingSyncTransportPostgresIntegrationTest {
             repository.apply(userId, envelope)
         } catch (e: PSQLException) {
             val server = e.serverErrorMessage
+            System.err.println(
+                "TRAINING_SYNC_PSQL_DIAGNOSTIC state=" + e.sqlState +
+                    " message=" + e.message +
+                    " serverMessage=" + server?.message +
+                    " detail=" + server?.detail +
+                    " hint=" + server?.hint
+            )
             throw AssertionError(
                 "PSQLSTATE=" + e.sqlState + " MESSAGE=" + e.message +
                     " SERVER_MESSAGE=" + server?.message +
