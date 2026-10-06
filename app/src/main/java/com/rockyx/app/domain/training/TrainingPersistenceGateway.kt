@@ -87,8 +87,8 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             supersedesEvidenceId = evidence.supersedesEvidenceId,
             scopeSessionId = evidence.sessionId,
             scopeDogId = evidence.dogId,
-            ruleVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).first,
-            policyVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).second,
+            scopeRuleVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).first,
+            scopePolicyVersionId = store.requireRecordVersionPins("SESSION", evidence.sessionId).second,
             evidenceStatus = evidence.status
         )
     }
