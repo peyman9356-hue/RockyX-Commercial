@@ -66,6 +66,10 @@ jobs:
             echo
             echo "[SYNC TEST REFERENCES]"
             grep -RInE 'sync|Sync' "$BACKEND/src/test" 2>/dev/null || true
+            echo
+            echo "[CLIENT NETWORK SYNC REFERENCES]"
+            grep -RIlE '/sync/operations|SyncOperationRequest|Idempotency-Key|HttpClient|Retrofit|OkHttp|ApiService' "$ROOT/app/src/main" | sort || true
+            grep -RInE '/sync/operations|SyncOperationRequest|Idempotency-Key' "$ROOT/app/src/main" || true
           } > "$REPORT"
 
           cat "$REPORT"
@@ -80,6 +84,12 @@ jobs:
           cp "$PWD/audit-src/rev14src/settings.gradle.kts" audit-package/
           mkdir -p audit-package/backend-src
           cp -R "$PWD/audit-src/rev14src/backend/src" audit-package/backend-src/
+          mkdir -p audit-package/client-sync-src
+          for f in $(grep -RIlE '/sync/operations|SyncOperationRequest|Idempotency-Key|HttpClient|Retrofit|OkHttp|ApiService' "$PWD/audit-src/rev14src/app/src/main" | sort); do
+            rel="${f#$PWD/audit-src/rev14src/}"
+            mkdir -p "audit-package/client-sync-src/$(dirname "$rel")"
+            cp "$f" "audit-package/client-sync-src/$rel"
+          done
 
       - name: Upload audit evidence
         uses: actions/upload-artifact@v4
