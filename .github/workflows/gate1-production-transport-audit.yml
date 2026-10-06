@@ -31,6 +31,19 @@ jobs:
           unzip -q rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip -d audit-src
           test -d audit-src/rev14src/backend
 
+      - name: Apply production transport overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/apply-production-transport-overlay.sh "$PWD/audit-src/rev14src" "$PWD"
+
+      - name: JVM and backend transport tests
+        working-directory: audit-src/rev14src
+        run: |
+          set -euo pipefail
+          gradle --no-daemon test
+          gradle --no-daemon :backend:build
+
       - name: Audit production transport boundary
         shell: bash
         run: |
