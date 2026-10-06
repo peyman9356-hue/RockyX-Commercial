@@ -24,6 +24,10 @@ integration_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncTranspor
 integration_dst = root / "backend/src/test/kotlin/com/rockyx/backend/TrainingSyncTransportPostgresIntegrationTest.kt"
 integration_dst.write_text(integration_src.read_text(encoding="utf-8"), encoding="utf-8")
 
+http_test_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncHttpRouteTest.kt"
+http_test_dst = root / "backend/src/test/kotlin/com/rockyx/backend/TrainingSyncHttpRouteTest.kt"
+http_test_dst.write_text(http_test_src.read_text(encoding="utf-8"), encoding="utf-8")
+
 
 client = root / "app/src/main/java/com/rockyx/app/data/network/RockyXApiClient.kt"
 client_text = client.read_text(encoding="utf-8")
