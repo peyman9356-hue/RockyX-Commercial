@@ -10,6 +10,7 @@ on:
       - "app/src/main/java/com/rockyx/app/library/**"
       - "app/src/test/java/com/rockyx/app/library/**"
       - "tools/apply-library-foundation-overlay.py"
+      - "tools/apply-training-sync-transport-overlay.py"
       - ".github/workflows/rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8_WORKFLOW.yml"
 
 jobs:
