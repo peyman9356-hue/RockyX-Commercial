@@ -283,21 +283,32 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 }
                 when (event.recordType) {
                     "ATTEMPT" -> {
+                        requireImmutable(db, "SESSION", event.sessionId)
                         requireScopeMatches(db, "SESSION", event.sessionId, event.sessionId)
                     }
                     "EVIDENCE" -> {
                         require(event.attemptId.isNotBlank()) { "SYNC_EVIDENCE_ATTEMPT_REQUIRED:" + event.recordId }
+                        requireImmutable(db, "ATTEMPT", event.attemptId)
                         requireScopeMatches(db, "ATTEMPT", event.attemptId, event.sessionId)
                     }
                     "EVALUATION" -> {
                         require(event.attemptIds.isNotEmpty()) { "SYNC_EVALUATION_ATTEMPTS_REQUIRED:" + event.recordId }
                         require(event.evidenceIds.isNotEmpty()) { "SYNC_EVALUATION_EVIDENCE_REQUIRED:" + event.recordId }
-                        event.attemptIds.forEach { requireScopeMatches(db, "ATTEMPT", it, event.sessionId) }
-                        event.evidenceIds.forEach { requireScopeMatches(db, "EVIDENCE", it, event.sessionId) }
+                        event.attemptIds.forEach {
+                            requireImmutable(db, "ATTEMPT", it)
+                            requireScopeMatches(db, "ATTEMPT", it, event.sessionId)
+                        }
+                        event.evidenceIds.forEach {
+                            requireImmutable(db, "EVIDENCE", it)
+                            requireScopeMatches(db, "EVIDENCE", it, event.sessionId)
+                        }
                     }
                     "DECISION" -> {
                         require(event.basisEvaluationIds == event.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
-                        event.basisEvaluationIds.forEach { requireScopeMatches(db, "EVALUATION", it, event.sessionId) }
+                        event.basisEvaluationIds.forEach {
+                            requireImmutable(db, "EVALUATION", it)
+                            requireScopeMatches(db, "EVALUATION", it, event.sessionId)
+                        }
                     }
                 }
                 if (event.recordType == "EVIDENCE" && event.supersedesRecordId != null) {
