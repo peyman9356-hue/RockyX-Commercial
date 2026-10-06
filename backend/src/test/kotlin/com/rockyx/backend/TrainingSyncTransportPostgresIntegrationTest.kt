@@ -36,7 +36,7 @@ class TrainingSyncTransportPostgresIntegrationTest {
             assertEquals(2, first.acceptedEventIds.size)
             assertTrue(first.duplicateEventIds.isEmpty())
 
-            val second = applyWithDiagnostics(repository, userId, request)
+            val second = repository.apply(userId, request)
             assertTrue(second.accepted)
             assertEquals(setOf("session-event", "attempt-event"), second.duplicateEventIds.toSet())
             assertTrue(second.acceptedEventIds.isEmpty())
