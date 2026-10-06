@@ -504,7 +504,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
 
     private fun requireRecordDog(db: SQLiteDatabase, recordType: String, recordId: String): String {
         require(recordId.isNotBlank()) { "SYNC_REFERENCE_REQUIRED:$recordType" }
-        readableDatabase.query(
+        db.query(
             "record_scopes",
             arrayOf("dog_id"),
             "record_type=? AND record_id=?",
