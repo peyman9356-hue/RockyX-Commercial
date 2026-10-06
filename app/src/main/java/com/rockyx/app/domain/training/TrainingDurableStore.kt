@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
 
-class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 3) {
+class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicationContext, "rockyx_training.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("PRAGMA foreign_keys=ON")
         db.execSQL("CREATE TABLE rule_versions (rule_id TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(rule_id, version))")
@@ -15,7 +15,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         db.execSQL("CREATE TABLE client_events (client_generated_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, identity_hash TEXT NOT NULL)")
         db.execSQL("CREATE TABLE immutable_records (record_type TEXT NOT NULL, record_id TEXT NOT NULL, payload_hash TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(record_type, record_id))")
         db.execSQL("CREATE TABLE evidence_successors (parent_id TEXT PRIMARY KEY, child_id TEXT NOT NULL UNIQUE)")
-        db.execSQL("CREATE TABLE record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, PRIMARY KEY(record_type, record_id))")
+        db.execSQL("CREATE TABLE record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, rule_version_id TEXT, policy_version_id TEXT, evidence_status TEXT, supersedes_record_id TEXT, PRIMARY KEY(record_type, record_id))")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -25,6 +25,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         }
         if (oldVersion < 3) {
             db.execSQL("CREATE TABLE IF NOT EXISTS record_scopes (record_type TEXT NOT NULL, record_id TEXT NOT NULL, session_id TEXT NOT NULL, dog_id TEXT, PRIMARY KEY(record_type, record_id))")
+        }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE record_scopes ADD COLUMN rule_version_id TEXT")
+            db.execSQL("ALTER TABLE record_scopes ADD COLUMN policy_version_id TEXT")
+            db.execSQL("ALTER TABLE record_scopes ADD COLUMN evidence_status TEXT")
+            db.execSQL("ALTER TABLE record_scopes ADD COLUMN supersedes_record_id TEXT")
         }
     }
 
@@ -124,8 +130,19 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         return true
     }
 
-    fun appendSession(sessionId: String, dogId: String, canonicalPayload: String, createdAt: Long) {
-        appendImmutable("SESSION", sessionId, canonicalPayload, createdAt, sessionId = sessionId, dogId = dogId)
+    fun appendSession(
+        sessionId: String,
+        dogId: String,
+        canonicalPayload: String,
+        createdAt: Long,
+        ruleVersionId: String,
+        policyVersionId: String
+    ) {
+        appendImmutable(
+            "SESSION", sessionId, canonicalPayload, createdAt,
+            sessionId = sessionId, dogId = dogId,
+            ruleVersionId = ruleVersionId, policyVersionId = policyVersionId
+        )
     }
 
     fun appendAttempt(attemptId: String, clientGeneratedId: String, canonicalPayload: String, createdAt: Long, sessionId: String, dogId: String): Boolean {
@@ -146,7 +163,11 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         canonicalPayload: String,
         createdAt: Long,
         sessionId: String? = null,
-        dogId: String? = null
+        dogId: String? = null,
+        ruleVersionId: String? = null,
+        policyVersionId: String? = null,
+        evidenceStatus: EvidenceStatus? = null,
+        supersedesRecordId: String? = null
     ) {
         require(recordType.isNotBlank() && recordId.isNotBlank())
         val db = writableDatabase
@@ -157,7 +178,10 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 put("payload_hash", sha256(canonicalPayload)); put("payload", canonicalPayload); put("created_at", createdAt)
             })
             if (sessionId != null) {
-                putRecordScope(db, recordType, recordId, sessionId, dogId)
+                putRecordScope(
+                    db, recordType, recordId, sessionId, dogId,
+                    ruleVersionId, policyVersionId, evidenceStatus, supersedesRecordId
+                )
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
@@ -170,7 +194,10 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         createdAt: Long,
         supersedesEvidenceId: String? = null,
         scopeSessionId: String? = null,
-        scopeDogId: String? = null
+        scopeDogId: String? = null,
+        scopeRuleVersionId: String? = null,
+        scopePolicyVersionId: String? = null,
+        evidenceStatus: EvidenceStatus? = null
     ): Boolean {
         require(eventId.isNotBlank() && recordType.isNotBlank() && recordId.isNotBlank())
         val hash = sha256(canonicalPayload)
@@ -200,7 +227,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 put("payload_hash", hash); put("payload", canonicalPayload); put("created_at", createdAt)
             })
             if (scopeSessionId != null) {
-                putRecordScope(db, recordType, recordId, scopeSessionId, scopeDogId)
+                putRecordScope(
+                    db, recordType, recordId, scopeSessionId, scopeDogId,
+                    scopeRuleVersionId, scopePolicyVersionId,
+                    evidenceStatus,
+                    if (recordType == "EVIDENCE") supersedesEvidenceId else null
+                )
             }
             db.setTransactionSuccessful()
             return true
@@ -283,6 +315,20 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     require(sessionExists) { "SYNC_SESSION_NOT_FOUND:" + event.recordId }
                 }
 
+                val persistedSessionPins = if (event.recordType == "SESSION") {
+                    event.ruleVersionId to event.policyVersionId
+                } else {
+                    requireRecordVersionPins(db, "SESSION", event.sessionId)
+                }
+                if (event.recordType != "SESSION") {
+                    require(event.ruleVersionId == persistedSessionPins.first) {
+                        "SYNC_SESSION_RULE_VERSION_MISMATCH:" + event.recordId
+                    }
+                    require(event.policyVersionId == persistedSessionPins.second) {
+                        "SYNC_SESSION_POLICY_VERSION_MISMATCH:" + event.recordId
+                    }
+                }
+
                 val sessionDogId = if (event.recordType == "SESSION") {
                     require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
                     event.dogId
@@ -308,6 +354,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     "EVALUATION" -> {
                         require(event.attemptIds.isNotEmpty()) { "SYNC_EVALUATION_ATTEMPTS_REQUIRED:" + event.recordId }
                         require(event.evidenceIds.isNotEmpty()) { "SYNC_EVALUATION_EVIDENCE_REQUIRED:" + event.recordId }
+                        requireCanonicalActiveEvidenceIds(db, event.sessionId, event.evidenceIds)
                         event.attemptIds.forEach {
                             requireImmutable(db, "ATTEMPT", it)
                             requireScopeMatches(db, "ATTEMPT", it, event.sessionId)
@@ -324,10 +371,14 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                         require(event.basisEvaluationIds == event.basisEvaluationIds.sorted()) { "BASIS_EVALUATION_IDS_NOT_SORTED" }
                         require(event.dogId.isNotBlank()) { "SYNC_EVENT_DOG_REQUIRED:" + event.recordId }
                         require(event.dogId == sessionDogId) { "SYNC_EVENT_DOG_MISMATCH:" + event.recordId }
+                        require(event.policyVersionId == persistedSessionPins.second) {
+                            "SYNC_DECISION_POLICY_VERSION_MISMATCH:" + event.recordId
+                        }
                         event.basisEvaluationIds.forEach {
                             requireImmutable(db, "EVALUATION", it)
                             requireScopeMatches(db, "EVALUATION", it, event.sessionId)
                             requireScopeDogMatches(db, "EVALUATION", it, sessionDogId)
+                            requireRecordPolicyVersion(db, "EVALUATION", it, persistedSessionPins.second)
                         }
                     }
                 }
@@ -364,7 +415,12 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     put("payload_hash", payloadHash); put("payload", event.canonicalPayload); put("created_at", System.currentTimeMillis())
                 })
                 val persistedDogId = if (event.recordType == "EVALUATION") sessionDogId else event.dogId
-                putRecordScope(db, event.recordType, event.recordId, event.sessionId, persistedDogId.ifBlank { null })
+                putRecordScope(
+                    db, event.recordType, event.recordId, event.sessionId, persistedDogId.ifBlank { null },
+                    event.ruleVersionId, event.policyVersionId,
+                    if (event.recordType == "EVIDENCE") (event.evidenceStatus ?: EvidenceStatus.VALID) else null,
+                    if (event.recordType == "EVIDENCE") event.supersedesRecordId else null
+                )
                 accepted += event.clientGeneratedId
             }
             db.setTransactionSuccessful()
@@ -447,18 +503,52 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 append("|evidenceIds=").append(list(event.evidenceIds))
                 append("|attemptIds=").append(list(event.attemptIds))
                 append("|basisEvaluationIds=").append(list(event.basisEvaluationIds))
+                append("|evidenceStatus=").append(part(event.evidenceStatus?.name ?: if (event.recordType == "EVIDENCE") EvidenceStatus.VALID.name else ""))
             }
         )
     }
 
-    private fun putRecordScope(db: SQLiteDatabase, recordType: String, recordId: String, sessionId: String, dogId: String?) {
+    private fun putRecordScope(
+        db: SQLiteDatabase,
+        recordType: String,
+        recordId: String,
+        sessionId: String,
+        dogId: String?,
+        ruleVersionId: String? = null,
+        policyVersionId: String? = null,
+        evidenceStatus: EvidenceStatus? = null,
+        supersedesRecordId: String? = null
+    ) {
         require(recordType.isNotBlank() && recordId.isNotBlank() && sessionId.isNotBlank()) { "INVALID_RECORD_SCOPE" }
         db.insertOrThrow("record_scopes", null, ContentValues().apply {
             put("record_type", recordType)
             put("record_id", recordId)
             put("session_id", sessionId)
             if (dogId != null) put("dog_id", dogId)
+            if (ruleVersionId != null) put("rule_version_id", ruleVersionId)
+            if (policyVersionId != null) put("policy_version_id", policyVersionId)
+            if (evidenceStatus != null) put("evidence_status", evidenceStatus.name)
+            if (supersedesRecordId != null) put("supersedes_record_id", supersedesRecordId)
         })
+    }
+
+    fun requireRecordVersionPins(recordType: String, recordId: String): Pair<String, String> =
+        readableDatabase.query(
+            "record_scopes",
+            arrayOf("rule_version_id", "policy_version_id"),
+            "record_type=? AND record_id=?",
+            arrayOf(recordType, recordId),
+            null, null, null
+        ).use {
+            require(it.moveToFirst() && !it.isNull(0) && !it.isNull(1)) {
+                "RECORD_VERSION_SCOPE_UNKNOWN:$recordType:$recordId"
+            }
+            it.getString(0) to it.getString(1)
+        }
+
+    fun requireCanonicalActiveEvidenceIds(sessionId: String, evidenceIds: List<String>) {
+        require(sessionId.isNotBlank()) { "SESSION_ID_REQUIRED" }
+        requireCanonicalActiveEvidenceIds(readableDatabase, sessionId, evidenceIds)
     }
 
     fun readRecordDog(recordType: String, recordId: String): String? {
@@ -500,6 +590,53 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         ).use { if (it.moveToFirst()) it.getString(0) else null }
         require(scope != null) { "SYNC_REFERENCE_SCOPE_UNKNOWN:$recordType:$recordId" }
         require(scope == expectedSessionId) { "SYNC_REFERENCE_SESSION_MISMATCH:$recordType:$recordId" }
+    }
+
+    private fun requireRecordVersionPins(db: SQLiteDatabase, recordType: String, recordId: String): Pair<String, String> =
+        db.query(
+            "record_scopes",
+            arrayOf("rule_version_id", "policy_version_id"),
+            "record_type=? AND record_id=?",
+            arrayOf(recordType, recordId),
+            null, null, null
+        ).use {
+            require(it.moveToFirst() && !it.isNull(0) && !it.isNull(1)) {
+                "RECORD_VERSION_SCOPE_UNKNOWN:$recordType:$recordId"
+            }
+            it.getString(0) to it.getString(1)
+        }
+
+    private fun requireRecordPolicyVersion(db: SQLiteDatabase, recordType: String, recordId: String, expectedPolicyVersionId: String) {
+        val pins = requireRecordVersionPins(db, recordType, recordId)
+        require(pins.second == expectedPolicyVersionId) {
+            "SYNC_REFERENCE_POLICY_VERSION_MISMATCH:$recordType:$recordId"
+        }
+    }
+
+    private fun requireCanonicalActiveEvidenceIds(db: SQLiteDatabase, sessionId: String, expectedEvidenceIds: List<String>) {
+        val expected = expectedEvidenceIds.distinct().sorted()
+        require(expected.size == expectedEvidenceIds.size) {
+            "CANONICAL_ACTIVE_EVIDENCE_MISMATCH:$sessionId"
+        }
+        val validEvidenceIds = mutableListOf<String>()
+        val validSupersededIds = mutableSetOf<String>()
+        db.query(
+            "record_scopes",
+            arrayOf("record_id", "evidence_status", "supersedes_record_id"),
+            "record_type='EVIDENCE' AND session_id=?",
+            arrayOf(sessionId),
+            null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                require(!cursor.isNull(1)) { "CANONICAL_EVIDENCE_SCOPE_UNKNOWN:" + cursor.getString(0) }
+                if (cursor.getString(1) == EvidenceStatus.VALID.name) {
+                    validEvidenceIds += cursor.getString(0)
+                    if (!cursor.isNull(2)) validSupersededIds += cursor.getString(2)
+                }
+            }
+        }
+        val active = validEvidenceIds.filterNot { it in validSupersededIds }.sorted()
+        require(active == expected) { "CANONICAL_ACTIVE_EVIDENCE_MISMATCH:$sessionId" }
     }
 
     private fun requireRecordDog(db: SQLiteDatabase, recordType: String, recordId: String): String {
