@@ -249,4 +249,123 @@ class TrainingSyncIntegrationTest {
     }
 
 
+
+
+    @Test fun syncRejectsCrossSessionReferencesEvenWhenReferencedRecordsExist() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+
+            val foreignSession = TrainingSession(
+                "sync-foreign-a","dog-a","sit","c1",emptyList(),
+                ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1"
+            )
+            val foreignEnvelope = TrainingSyncEnvelope(
+                "sync-foreign-a","dog-a","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("fa-session","SESSION","sync-foreign-a","foreign-session","SYNC:1","SYNC_POLICY:1",sessionId="sync-foreign-a"),
+                    TrainingSyncEvent("fa-attempt","ATTEMPT","foreign-attempt","foreign-attempt","SYNC:1","SYNC_POLICY:1",sessionId="sync-foreign-a",dogId="dog-a"),
+                    TrainingSyncEvent("fa-evidence","EVIDENCE","foreign-evidence","foreign-evidence","SYNC:1","SYNC_POLICY:1",sessionId="sync-foreign-a",attemptId="foreign-attempt"),
+                    TrainingSyncEvent("fa-eval","EVALUATION","foreign-evaluation","foreign-evaluation","SYNC:1","SYNC_POLICY:1",sessionId="sync-foreign-a",attemptIds=listOf("foreign-attempt"),evidenceIds=listOf("foreign-evidence")),
+                    TrainingSyncEvent("fa-decision","DECISION","foreign-decision","foreign-decision","SYNC:1","SYNC_POLICY:1",sessionId="sync-foreign-a",basisEvaluationIds=listOf("foreign-evaluation"))
+                )
+            )
+            assertTrue(g.applySync(foreignEnvelope, foreignSession, registry).accepted)
+
+            val targetSession = TrainingSession(
+                "sync-target-b","dog-b","sit","c1",emptyList(),
+                ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1"
+            )
+
+            val foreignAttemptEvidence = TrainingSyncEnvelope(
+                "sync-target-b","dog-b","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("tb-session-1","SESSION","sync-target-b","target-session","SYNC:1","SYNC_POLICY:1",sessionId="sync-target-b"),
+                    TrainingSyncEvent("tb-evidence-foreign-attempt","EVIDENCE","target-evidence-foreign-attempt","target-evidence","SYNC:1","SYNC_POLICY:1",sessionId="sync-target-b",attemptId="foreign-attempt")
+                )
+            )
+            val evidenceResult = g.applySync(foreignAttemptEvidence, targetSession, registry)
+            assertFalse(evidenceResult.accepted)
+            assertTrue(evidenceResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:ATTEMPT:foreign-attempt") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-target-b") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","target-evidence-foreign-attempt") })
+
+            val targetBase = TrainingSyncEnvelope(
+                "sync-target-b","dog-b","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("tb-session-2","SESSION","sync-target-b","target-session","SYNC:1","SYNC_POLICY:1",sessionId="sync-target-b"),
+                    TrainingSyncEvent("tb-attempt","ATTEMPT","target-attempt","target-attempt","SYNC:1","SYNC_POLICY:1",sessionId="sync-target-b",dogId="dog-b"),
+                    TrainingSyncEvent("tb-evidence","EVIDENCE","target-evidence","target-evidence","SYNC:1","SYNC_POLICY:1",sessionId="sync-target-b",attemptId="target-attempt")
+                )
+            )
+            assertTrue(g.applySync(targetBase, targetSession, registry).accepted)
+
+            val foreignAttemptEvaluation = targetBase.copy(events=listOf(
+                TrainingSyncEvent("tb-eval-foreign-attempt","EVALUATION","target-eval-foreign-attempt","target-eval","SYNC:1","SYNC_POLICY:1",
+                    sessionId="sync-target-b",attemptIds=listOf("foreign-attempt"),evidenceIds=listOf("target-evidence"))
+            ))
+            val evaluationAttemptResult = g.applySync(foreignAttemptEvaluation, targetSession, registry)
+            assertFalse(evaluationAttemptResult.accepted)
+            assertTrue(evaluationAttemptResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:ATTEMPT:foreign-attempt") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVALUATION","target-eval-foreign-attempt") })
+
+            val foreignEvidenceEvaluation = targetBase.copy(events=listOf(
+                TrainingSyncEvent("tb-eval-foreign-evidence","EVALUATION","target-eval-foreign-evidence","target-eval","SYNC:1","SYNC_POLICY:1",
+                    sessionId="sync-target-b",attemptIds=listOf("target-attempt"),evidenceIds=listOf("foreign-evidence"))
+            ))
+            val evaluationEvidenceResult = g.applySync(foreignEvidenceEvaluation, targetSession, registry)
+            assertFalse(evaluationEvidenceResult.accepted)
+            assertTrue(evaluationEvidenceResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:EVIDENCE:foreign-evidence") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVALUATION","target-eval-foreign-evidence") })
+
+            val foreignDecision = targetBase.copy(events=listOf(
+                TrainingSyncEvent("tb-decision-foreign-evaluation","DECISION","target-decision-foreign-evaluation","target-decision","SYNC:1","SYNC_POLICY:1",
+                    sessionId="sync-target-b",basisEvaluationIds=listOf("foreign-evaluation"))
+            ))
+            val decisionResult = g.applySync(foreignDecision, targetSession, registry)
+            assertFalse(decisionResult.accepted)
+            assertTrue(decisionResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:EVALUATION:foreign-evaluation") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("DECISION","target-decision-foreign-evaluation") })
+
+            val foreignSupersede = targetBase.copy(events=listOf(
+                TrainingSyncEvent("tb-supersede-foreign","EVIDENCE","target-evidence-foreign-supersede","replacement","SYNC:1","SYNC_POLICY:1",
+                    supersedesRecordId="foreign-evidence",sessionId="sync-target-b",attemptId="target-attempt")
+            ))
+            val supersedeResult = g.applySync(foreignSupersede, targetSession, registry)
+            assertFalse(supersedeResult.accepted)
+            assertTrue(supersedeResult.rejections.any { it.contains("SYNC_REFERENCE_SESSION_MISMATCH:EVIDENCE:foreign-evidence") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","target-evidence-foreign-supersede") })
+        }
+    }
+
+    @Test fun syncDuplicateRecordConflictIsReturnedAsStructuredRejection() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("SYNC","1","VALID"), PolicyVersion("SYNC_POLICY","1","VALID"))
+            val session = TrainingSession("sync-constraint-1","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("SYNC","1","VALID")),
+                listOf(PolicyVersion("SYNC_POLICY","1","VALID"))
+            )
+
+            val first = TrainingSyncEnvelope(
+                "sync-constraint-1","d1","SYNC:1","SYNC_POLICY:1",
+                listOf(
+                    TrainingSyncEvent("constraint-1","SESSION","sync-constraint-1","session","SYNC:1","SYNC_POLICY:1",sessionId="sync-constraint-1")
+                )
+            )
+            assertTrue(g.applySync(first, session, registry).accepted)
+
+            val conflict = first.copy(events=listOf(
+                TrainingSyncEvent("constraint-2","SESSION","sync-constraint-1","different","SYNC:1","SYNC_POLICY:1",sessionId="sync-constraint-1")
+            ))
+            val result = g.applySync(conflict, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_RECORD_ID_CONFLICT:SESSION:sync-constraint-1") })
+            assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-constraint-1") })
+        }
+    }
+
 }
