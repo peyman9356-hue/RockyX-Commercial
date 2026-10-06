@@ -366,6 +366,12 @@ class TrainingPersistenceGatewayTest {
                 SessionStatus.INVALID,
                 TrainingDurableStore(context).use { it.readSessionStatus("invalidate-session") }
             )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendAttempt(
+                    TrainingAttempt("direct-blocked","invalidate-session",1,emptyList(),"d1",2L,"direct-blocked"),
+                    "direct-blocked"
+                )
+            }
 
             val registry = TrainingVersionRegistry(
                 listOf(RuleVersion("INVALIDATE","1","VALID")),
