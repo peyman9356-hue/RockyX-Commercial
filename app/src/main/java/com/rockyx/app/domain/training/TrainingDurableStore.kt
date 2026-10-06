@@ -141,13 +141,14 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
         canonicalPayload: String,
         createdAt: Long,
         ruleVersionId: String,
-        policyVersionId: String
+        policyVersionId: String,
+        sessionStatus: SessionStatus = SessionStatus.ACTIVE
     ) {
         appendImmutable(
             "SESSION", sessionId, canonicalPayload, createdAt,
             sessionId = sessionId, dogId = dogId,
             ruleVersionId = ruleVersionId, policyVersionId = policyVersionId,
-            sessionStatus = SessionStatus.ACTIVE
+            sessionStatus = sessionStatus
         )
     }
 
