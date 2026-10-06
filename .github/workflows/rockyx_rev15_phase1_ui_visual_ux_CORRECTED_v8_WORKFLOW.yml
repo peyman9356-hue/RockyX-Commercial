@@ -130,35 +130,9 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Configure full PostgreSQL test diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat >> rockyx-src/rev14src/backend/build.gradle.kts <<'EOF'
-          
-          tasks.withType<Test>().configureEach {
-              testLogging {
-                  events("FAILED", "STANDARD_OUT", "STANDARD_ERROR")
-                  showStandardStreams = true
-                  exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-              }
-          }
-          EOF
-
       - name: Run production transport PostgreSQL integration tests
         working-directory: rockyx-src/rev14src
-        run: gradle --no-daemon :backend:test --tests com.rockyx.backend.TrainingSyncTransportPostgresIntegrationTest --stacktrace
-
-      - name: Upload PostgreSQL test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rocky-x-training-sync-postgres-test-report
-          path: |
-            rockyx-src/rev14src/backend/build/reports/tests/test
-            rockyx-src/rev14src/backend/build/test-results/test
-          if-no-files-found: warn
-          retention-days: 14
+        run: gradle --no-daemon :backend:test --tests com.rockyx.backend.TrainingSyncTransportPostgresIntegrationTest
 
   build:
     runs-on: ubuntu-latest
@@ -303,10 +277,6 @@ jobs:
           path: rockyx-src/rev14src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
-# Gate2 transport verification trigger: PostgreSQL integration diagnostics.
 
-# Gate2 PostgreSQL diagnostic output trigger.
 
-# Gate2 full PostgreSQL test-report diagnostics trigger.
 
-# Gate2 full test logging FQN trigger.
