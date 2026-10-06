@@ -6,7 +6,7 @@ on:
       - "rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip"
       - ".github/workflows/gate1-production-transport-audit.yml"
       - "backend/**"
-      - "tools/apply-training-sync-transport-overlay.py"
+      - "tools/apply-production-transport-overlay.sh"
   workflow_dispatch:
 
 jobs:
@@ -32,6 +32,16 @@ jobs:
           mkdir audit-src
           unzip -q rockyx_rev15_phase1_ui_visual_ux_CORRECTED_v8.zip -d audit-src
           test -d audit-src/rev14src/backend
+
+      - name: Apply production transport overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/apply-production-transport-overlay.sh "$PWD/audit-src/rev14src" "$PWD"
+          test -f audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/training/TrainingSyncHttpRoutes.kt
+          grep -q 'registerTrainingSyncHttpRoute' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/api/Routes.kt
+          grep -q 'trainingSyncTransport' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/Application.kt
+          grep -q 'sync:write' audit-src/rev14src/backend/src/main/kotlin/com/rockyx/backend/training/TrainingSyncHttpRoutes.kt
 
       - name: Audit production transport boundary
         shell: bash
