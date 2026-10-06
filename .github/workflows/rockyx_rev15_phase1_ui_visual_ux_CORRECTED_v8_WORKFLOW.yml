@@ -132,7 +132,7 @@ jobs:
 
       - name: Run production transport PostgreSQL integration tests
         working-directory: rockyx-src/rev14src
-        run: gradle --no-daemon :backend:test --tests com.rockyx.backend.TrainingSyncTransportPostgresIntegrationTest
+        run: gradle --no-daemon :backend:test --tests com.rockyx.backend.TrainingSyncTransportPostgresIntegrationTest --stacktrace
 
   build:
     runs-on: ubuntu-latest
