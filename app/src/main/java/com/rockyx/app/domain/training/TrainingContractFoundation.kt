@@ -38,7 +38,8 @@ data class TrainingSyncEvent(
     val attemptId: String = "",
     val evidenceIds: List<String> = emptyList(),
     val attemptIds: List<String> = emptyList(),
-    val basisEvaluationIds: List<String> = emptyList()
+    val basisEvaluationIds: List<String> = emptyList(),
+    val evidenceStatus: EvidenceStatus? = null
 )
 data class TrainingSyncEnvelope(
     val sessionId: String,
