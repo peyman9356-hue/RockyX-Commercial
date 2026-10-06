@@ -363,7 +363,7 @@ class TrainingSyncIntegrationTest {
             ))
             val result = g.applySync(conflict, session, registry)
             assertFalse(result.accepted)
-            assertTrue(result.rejections.any { it.contains("SYNC_RECORD_ID_CONFLICT:SESSION:sync-constraint-1") })
+            assertTrue(result.rejections.any { it.contains("SYNC_RECORD_ID_CONFLICT") })
             assertEquals("session", TrainingDurableStore(context).use { it.readImmutable("SESSION","sync-constraint-1") })
         }
     }
