@@ -278,3 +278,5 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 # Gate2 transport verification trigger: PostgreSQL integration diagnostics.
+
+# Gate2 PostgreSQL diagnostic output trigger.
