@@ -15,6 +15,15 @@ migration_src = tracked / "main/resources/db/migration/V12__training_sync_transp
 migration_dst = root / "backend/src/main/resources/db/migration/V12__training_sync_transport.sql"
 migration_dst.write_text(migration_src.read_text(encoding="utf-8"), encoding="utf-8")
 
+test_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncTransportPolicyTest.kt"
+test_dst = root / "backend/src/test/kotlin/com/rockyx/backend/TrainingSyncTransportPolicyTest.kt"
+test_dst.parent.mkdir(parents=True, exist_ok=True)
+test_dst.write_text(test_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+integration_src = tracked / "test/kotlin/com/rockyx/backend/TrainingSyncTransportPostgresIntegrationTest.kt"
+integration_dst = root / "backend/src/test/kotlin/com/rockyx/backend/TrainingSyncTransportPostgresIntegrationTest.kt"
+integration_dst.write_text(integration_src.read_text(encoding="utf-8"), encoding="utf-8")
+
 routes = target / "main/kotlin/com/rockyx/backend/api/Routes.kt"
 text = routes.read_text(encoding="utf-8")
 
