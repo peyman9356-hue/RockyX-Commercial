@@ -140,7 +140,7 @@ jobs:
               testLogging {
                   events("FAILED", "STANDARD_OUT", "STANDARD_ERROR")
                   showStandardStreams = true
-                  exceptionFormat = TestExceptionFormat.FULL
+                  exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
               }
           }
           EOF
@@ -308,3 +308,5 @@ jobs:
 # Gate2 PostgreSQL diagnostic output trigger.
 
 # Gate2 full PostgreSQL test-report diagnostics trigger.
+
+# Gate2 full test logging FQN trigger.
