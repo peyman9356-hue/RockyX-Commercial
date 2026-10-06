@@ -169,7 +169,7 @@ class TrainingPersistenceGatewayTest {
             val session = TrainingSession("sync-s1","d1","sit","c1",emptyList(),ruleVersionId="SYNC:1",policyVersionId="SYNC_POLICY:1")
             val registry = TrainingVersionRegistry(listOf(RuleVersion("SYNC","1","VALID")), listOf(PolicyVersion("SYNC_POLICY","1","VALID")))
             val valid = TrainingSyncEnvelope("sync-s1","d1","SYNC:1","SYNC_POLICY:1",listOf(
-                TrainingSyncEvent("evt-1","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1", sessionId="sync-s1")
+                TrainingSyncEvent("evt-1","ATTEMPT","a1","attempt", "SYNC:1","SYNC_POLICY:1", sessionId="sync-s1", dogId="d1")
             ))
             assertTrue(TrainingSyncValidator.validate(valid,session,registry).accepted)
             val bad = valid.copy(events=listOf(valid.events.first().copy(ruleVersionId="SYNC:2")))
