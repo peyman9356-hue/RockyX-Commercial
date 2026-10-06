@@ -354,7 +354,6 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     "EVALUATION" -> {
                         require(event.attemptIds.isNotEmpty()) { "SYNC_EVALUATION_ATTEMPTS_REQUIRED:" + event.recordId }
                         require(event.evidenceIds.isNotEmpty()) { "SYNC_EVALUATION_EVIDENCE_REQUIRED:" + event.recordId }
-                        requireCanonicalActiveEvidenceIds(db, event.sessionId, event.evidenceIds)
                         event.attemptIds.forEach {
                             requireImmutable(db, "ATTEMPT", it)
                             requireScopeMatches(db, "ATTEMPT", it, event.sessionId)
@@ -365,6 +364,7 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                             requireScopeMatches(db, "EVIDENCE", it, event.sessionId)
                             requireScopeDogMatches(db, "EVIDENCE", it, sessionDogId)
                         }
+                        requireCanonicalActiveEvidenceIds(db, event.sessionId, event.evidenceIds)
                     }
                     "DECISION" -> {
                         require(event.basisEvaluationIds.isNotEmpty()) { "DECISION_BASIS_REQUIRED:" + event.recordId }
