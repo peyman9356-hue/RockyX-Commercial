@@ -52,7 +52,7 @@ object TrainingSyncValidator {
     fun validate(envelope: TrainingSyncEnvelope, session: TrainingSession, registry: TrainingVersionRegistry): SyncValidationResult {
         val errors = buildList {
             if (envelope.sessionId.isBlank() || envelope.dogId.isBlank()) add(SyncRejectionCode.EMPTY_SESSION)
-            try { registry.requireExactPins(session) } catch (_: IllegalArgumentException) { add(SyncRejectionCode.INVALID_SESSION) }
+            try { registry.requireExactPins(session) } catch (_: RuntimeException) { add(SyncRejectionCode.INVALID_SESSION) }
             if (envelope.sessionId != session.sessionId || envelope.dogId != session.dogId ||
                 envelope.ruleVersionId != session.ruleVersionId || envelope.policyVersionId != session.policyVersionId) {
                 add(SyncRejectionCode.VERSION_MISMATCH)
