@@ -142,9 +142,9 @@ new_home = '''    private fun showHome() {
 
         val insight = TextView(this).apply {
             text = if (nextLesson != null)
-                "دیدگاه مربی\nپیشنهاد امروز بر اساس مسیر آموزشی فعلی: ${nextLesson.second.title}"
+                "دیدگاه مربی\\nپیشنهاد امروز بر اساس مسیر آموزشی فعلی: ${nextLesson.second.title}"
             else
-                "دیدگاه مربی\nبرای تعیین قدم بعدی، یک تمرین را شروع کن."
+                "دیدگاه مربی\\nبرای تعیین قدم بعدی، یک تمرین را شروع کن."
             textSize = 14f
             setTextColor(Color.rgb(218, 222, 224))
             gravity = Gravity.RIGHT
