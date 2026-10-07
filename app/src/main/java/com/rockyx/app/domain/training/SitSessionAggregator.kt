@@ -2,7 +2,12 @@ package com.rockyx.app.domain.training
 
 object SitSessionAggregator{
  const val RULE_VERSION="SIT_AGGREGATION_V1_PROTOTYPE"
- fun activeEvidence(evidence:List<SitEvidence>):List<SitEvidence>{require(TrainingValidation.validateConcurrentSupersede(evidence).isEmpty()){"Conflicting evidence supersedes links."};val superseded=evidence.mapNotNull{it.supersedesEvidenceId}.toSet();return evidence.filter{it.status==EvidenceStatus.VALID&&it.evidenceId !in superseded}.sortedBy{it.clientGeneratedId}}
+ fun activeEvidence(evidence:List<SitEvidence>):List<SitEvidence>{
+  require(TrainingValidation.validateConcurrentSupersede(evidence).isEmpty()){"Conflicting evidence supersedes links."}
+  val valid=evidence.filter{it.status==EvidenceStatus.VALID}
+  val superseded=valid.mapNotNull{it.supersedesEvidenceId}.toSet()
+  return valid.filter{it.evidenceId !in superseded}.sortedBy{it.clientGeneratedId}
+ }
  fun evaluate(session:TrainingSession,evidence:List<SitEvidence>,evaluationId:String="eval-"+session.sessionId,ruleVersion:RuleVersion=RuleVersion("SIT_AGGREGATION_V1_PROTOTYPE","1"),policyVersion:PolicyVersion=PolicyVersion("SIT_POLICY","1")):Evaluation{
   require(TrainingValidation.validateSession(session).isEmpty()){"Invalid training session."}
   require(TrainingValidation.validateEvidence(session,evidence).isEmpty()){"Invalid training evidence."}

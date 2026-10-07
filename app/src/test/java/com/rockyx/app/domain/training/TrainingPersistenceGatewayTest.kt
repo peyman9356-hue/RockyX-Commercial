@@ -195,4 +195,203 @@ class TrainingPersistenceGatewayTest {
         }
     }
 
+
+    @Test fun persistedSessionPinsCannotBeRemappedBySyncCaller() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("PIN", "1", "VALID"), PolicyVersion("PIN_POLICY", "1", "VALID"))
+            g.register(RuleVersion("PIN", "2", "VALID"), PolicyVersion("PIN_POLICY", "2", "VALID"))
+            val storedSession = TrainingSession(
+                "pin-session", "d1", "sit", "c1", emptyList(),
+                ruleVersionId = "PIN:1", policyVersionId = "PIN_POLICY:1"
+            )
+            assertTrue(g.appendSession(storedSession, "pin-session"))
+
+            val callerSession = storedSession.copy(
+                ruleVersionId = "PIN:2",
+                policyVersionId = "PIN_POLICY:2"
+            )
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("PIN","1","VALID"), RuleVersion("PIN","2","VALID")),
+                listOf(PolicyVersion("PIN_POLICY","1","VALID"), PolicyVersion("PIN_POLICY","2","VALID"))
+            )
+            val envelope = TrainingSyncEnvelope(
+                "pin-session","d1","PIN:2","PIN_POLICY:2",
+                listOf(
+                    TrainingSyncEvent(
+                        "pin-attempt","ATTEMPT","pin-attempt","attempt",
+                        "PIN:2","PIN_POLICY:2",sessionId="pin-session",dogId="d1"
+                    )
+                )
+            )
+            val result = g.applySync(envelope, callerSession, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_SESSION_RULE_VERSION_MISMATCH") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("ATTEMPT","pin-attempt") })
+        }
+    }
+
+    @Test fun directEvidenceRejectsForeignDog() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("DOG", "1", "VALID"), PolicyVersion("DOG_POLICY", "1", "VALID"))
+            val session = TrainingSession("dog-session","dog-a","sit","c1",emptyList(),ruleVersionId="DOG:1",policyVersionId="DOG_POLICY:1")
+            assertTrue(g.appendSession(session,"dog-session"))
+            assertTrue(g.appendAttempt(TrainingAttempt("dog-attempt","dog-session",1,emptyList(),"dog-a",1L,"dog-attempt"),"dog-attempt"))
+
+            val evidence = SitEvidence(
+                "foreign-evidence","dog-b","dog-attempt","dog-session","c1",
+                CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
+                ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendEvidence(evidence,"foreign-evidence")
+            }
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVIDENCE","foreign-evidence") })
+        }
+    }
+
+    @Test fun directEvaluationMustUsePersistedSessionVersionPins() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("EVAL_PIN", "1", "VALID"), PolicyVersion("EVAL_POLICY", "1", "VALID"))
+            g.register(RuleVersion("EVAL_PIN", "2", "VALID"), PolicyVersion("EVAL_POLICY", "2", "VALID"))
+            val session = TrainingSession("eval-pin-session","d1","sit","c1",emptyList(),ruleVersionId="EVAL_PIN:1",policyVersionId="EVAL_POLICY:1")
+            assertTrue(g.appendSession(session,"eval-pin-session"))
+
+            val evaluation = Evaluation(
+                "eval-pin-1","eval-pin-session",emptyList(),emptyList(),
+                EvaluationResult.UNKNOWN,Sufficiency.INSUFFICIENT,EvaluationStatus.INSUFFICIENT,
+                ConfidenceTier.LOW,"EVAL_PIN:2","EVAL_POLICY:2"
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendEvaluation(evaluation,"eval-pin")
+            }
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVALUATION","eval-pin-1") })
+        }
+    }
+
+    @Test fun directDecisionRequiresNonEmptyBasisAndMatchingPolicy() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("DEC_PIN", "1", "VALID"), PolicyVersion("DEC_POLICY", "1", "VALID"))
+            g.register(RuleVersion("DEC_PIN", "2", "VALID"), PolicyVersion("DEC_POLICY", "2", "VALID"))
+            val session = TrainingSession("decision-session","d1","sit","c1",emptyList(),ruleVersionId="DEC_PIN:1",policyVersionId="DEC_POLICY:1")
+            assertTrue(g.appendSession(session,"decision-session"))
+            val evaluation = Evaluation(
+                "decision-eval","decision-session",emptyList(),emptyList(),
+                EvaluationResult.UNKNOWN,Sufficiency.INSUFFICIENT,EvaluationStatus.INSUFFICIENT,
+                ConfidenceTier.LOW,"DEC_PIN:1","DEC_POLICY:1"
+            )
+            assertTrue(g.appendEvaluation(evaluation,"decision-eval"))
+
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendDecision(
+                    Decision("decision-empty","d1","sit","DEC_POLICY:1",emptyList(),DecisionType.REVIEW,emptyList()),
+                    "decision-empty"
+                )
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendDecision(
+                    Decision("decision-policy-mismatch","d1","sit","DEC_POLICY:2",listOf("decision-eval"),DecisionType.REVIEW,emptyList()),
+                    "decision-policy-mismatch"
+                )
+            }
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("DECISION","decision-policy-mismatch") })
+        }
+    }
+
+    @Test fun directEvaluationMustMatchCanonicalActiveEvidenceSet() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("CANON", "1", "VALID"), PolicyVersion("CANON_POLICY", "1", "VALID"))
+            val session = TrainingSession("canonical-session","d1","sit","c1",emptyList(),ruleVersionId="CANON:1",policyVersionId="CANON_POLICY:1")
+            assertTrue(g.appendSession(session,"canonical-session"))
+            assertTrue(g.appendAttempt(TrainingAttempt("canonical-attempt","canonical-session",1,listOf("canonical-evidence"),"d1",1L,"canonical-attempt"),"canonical-attempt"))
+            val evidence = SitEvidence(
+                "canonical-evidence","d1","canonical-attempt","canonical-session","c1",
+                CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
+                ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE,EvidenceStatus.VALID
+            )
+            assertTrue(g.appendEvidence(evidence,"canonical-evidence"))
+
+            val invalidEvaluation = Evaluation(
+                "canonical-eval-bad","canonical-session",listOf("canonical-attempt"),emptyList(),
+                EvaluationResult.UNKNOWN,Sufficiency.INSUFFICIENT,EvaluationStatus.INSUFFICIENT,
+                ConfidenceTier.LOW,"CANON:1","CANON_POLICY:1"
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendEvaluation(invalidEvaluation,"canonical-eval-bad")
+            }
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("EVALUATION","canonical-eval-bad") })
+
+            val validEvaluation = invalidEvaluation.copy(
+                evaluationId = "canonical-eval-good",
+                evidenceIds = listOf("canonical-evidence")
+            )
+            assertTrue(g.appendEvaluation(validEvaluation,"canonical-eval-good"))
+        }
+    }
+
+    @Test fun invalidEvidenceCannotSupersedeValidEvidenceInAggregator() {
+        val active = SitSessionAggregator.activeEvidence(
+            listOf(
+                SitEvidence(
+                    "active-parent","d1","a1","s1","c1",
+                    CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.YES,
+                    ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE,EvidenceStatus.VALID
+                ),
+                SitEvidence(
+                    "invalid-child","d1","a1","s1","c1",
+                    CueType.VERBAL,LureStatus.NOT_REQUIRED,SitResult.NO,
+                    ResponseQuality.IMMEDIATE,RewardTiming.IMMEDIATE,EvidenceStatus.INVALID,
+                    supersedesEvidenceId = "active-parent"
+                )
+            )
+        )
+        assertEquals(listOf("active-parent"), active.map { it.evidenceId })
+    }
+
+    @Test fun invalidVersionPinDurablyInvalidatesExistingSession() {
+        TrainingPersistenceGateway(context).use { g ->
+            g.register(RuleVersion("INVALIDATE", "1", "VALID"), PolicyVersion("INVALIDATE_POLICY", "1", "VALID"))
+            val session = TrainingSession(
+                "invalidate-session","d1","sit","c1",emptyList(),
+                ruleVersionId="INVALIDATE:1",policyVersionId="INVALIDATE_POLICY:1"
+            )
+            assertTrue(g.appendSession(session,"invalidate-session"))
+
+            val envelope = TrainingSyncEnvelope(
+                "invalidate-session","d1","INVALIDATE:1","INVALIDATE_POLICY:1",emptyList()
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.applySync(envelope, session, TrainingVersionRegistry(emptyList(), emptyList()))
+            }
+            assertEquals(
+                SessionStatus.INVALID,
+                TrainingDurableStore(context).use { it.readSessionStatus("invalidate-session") }
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                g.appendAttempt(
+                    TrainingAttempt("direct-blocked","invalidate-session",1,emptyList(),"d1",2L,"direct-blocked"),
+                    "direct-blocked"
+                )
+            }
+
+            val registry = TrainingVersionRegistry(
+                listOf(RuleVersion("INVALIDATE","1","VALID")),
+                listOf(PolicyVersion("INVALIDATE_POLICY","1","VALID"))
+            )
+            val blocked = envelope.copy(
+                events = listOf(
+                    TrainingSyncEvent(
+                        "blocked-attempt","ATTEMPT","blocked-attempt","attempt",
+                        "INVALIDATE:1","INVALIDATE_POLICY:1",
+                        sessionId="invalidate-session",dogId="d1"
+                    )
+                )
+            )
+            val result = g.applySync(blocked, session, registry)
+            assertFalse(result.accepted)
+            assertTrue(result.rejections.any { it.contains("SYNC_SESSION_INVALID") })
+            assertNull(TrainingDurableStore(context).use { it.readImmutable("ATTEMPT","blocked-attempt") })
+        }
+    }
+
+
 }
