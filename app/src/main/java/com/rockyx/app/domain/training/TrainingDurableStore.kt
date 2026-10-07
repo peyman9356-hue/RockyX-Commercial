@@ -290,7 +290,11 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                     evidenceStatus,
                     if (recordType == "EVIDENCE") supersedesEvidenceId else null
                 )
-                enqueueOutboxInTransaction(
+                // Only complete client-side Gateway writes enter the Outbox.
+                // Low-level store callers used by existing sync-ingestion fixtures
+                // may intentionally omit outbound transport metadata.
+                if (scopeDogId != null && scopeRuleVersionId != null && scopePolicyVersionId != null) {
+                    enqueueOutboxInTransaction(
                     db = db,
                     clientGeneratedId = eventId,
                     recordType = recordType,
