@@ -295,22 +295,23 @@ class TrainingDurableStore(context: Context) : SQLiteOpenHelper(context.applicat
                 // may intentionally omit outbound transport metadata.
                 if (scopeDogId != null && scopeRuleVersionId != null && scopePolicyVersionId != null) {
                     enqueueOutboxInTransaction(
-                    db = db,
-                    clientGeneratedId = eventId,
-                    recordType = recordType,
-                    recordId = recordId,
-                    sessionId = scopeSessionId,
-                    dogId = requireNotNull(scopeDogId),
-                    canonicalPayload = canonicalPayload,
-                    ruleVersionId = requireNotNull(scopeRuleVersionId),
-                    policyVersionId = requireNotNull(scopePolicyVersionId),
-                    supersedesRecordId = if (recordType == "EVIDENCE") supersedesEvidenceId else null,
-                    attemptId = outboxAttemptId,
-                    attemptIds = outboxAttemptIds,
-                    evidenceIds = outboxEvidenceIds,
-                    basisEvaluationIds = outboxBasisEvaluationIds,
-                    evidenceStatus = evidenceStatus
-                )
+                        db = db,
+                        clientGeneratedId = eventId,
+                        recordType = recordType,
+                        recordId = recordId,
+                        sessionId = scopeSessionId,
+                        dogId = requireNotNull(scopeDogId),
+                        canonicalPayload = canonicalPayload,
+                        ruleVersionId = requireNotNull(scopeRuleVersionId),
+                        policyVersionId = requireNotNull(scopePolicyVersionId),
+                        supersedesRecordId = if (recordType == "EVIDENCE") supersedesEvidenceId else null,
+                        attemptId = outboxAttemptId,
+                        attemptIds = outboxAttemptIds,
+                        evidenceIds = outboxEvidenceIds,
+                        basisEvaluationIds = outboxBasisEvaluationIds,
+                        evidenceStatus = evidenceStatus
+                    )
+                }
             }
             db.setTransactionSuccessful()
             return true
