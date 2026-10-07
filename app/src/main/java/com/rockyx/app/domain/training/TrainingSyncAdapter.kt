@@ -7,6 +7,7 @@ data class TrainingSyncDeliveryResult(
 )
 
 /** Transport-only boundary; it does not evaluate or mutate Gate 1 semantics. */
+// CI trigger: Outbox compatibility fix verification.
 fun interface TrainingSyncSender {
     suspend fun send(envelope: TrainingSyncEnvelope, idempotencyKey: String): TrainingSyncDeliveryResult
 }
