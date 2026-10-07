@@ -85,7 +85,13 @@ new_home = '''    private fun showHome() {
             background = rounded(Color.rgb(232, 214, 178), 26f)
             setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
-                Toast.makeText(this@MainActivity, "تمرین امروز: ${nextLesson?.second?.title ?: "انتخاب تمرین بعدی"}", Toast.LENGTH_SHORT).show()
+                if (nextLesson != null) {
+                    shellState.closePanels()
+                    removeOverlay()
+                    showLesson(nextLesson.first, nextLesson.second)
+                } else {
+                    Toast.makeText(this@MainActivity, "هنوز تمرین بعدی قابل تعیین نیست.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
         pageRoot.addView(start, LinearLayout.LayoutParams(-1, dp(58)).apply {
