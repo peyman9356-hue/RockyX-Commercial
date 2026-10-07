@@ -44,7 +44,7 @@ class TrainingSyncOutboxTest {
     }
 
     @Test fun adapterReusesSameDeliveryKeyAcrossRetryAndDoesNotResendSucceededRow() = runBlocking {
-        var now = 1_000_000L
+        var now = System.currentTimeMillis() + 60_000L
         var calls = 0
         val keys = mutableListOf<String>()
         var shouldSucceed = false
