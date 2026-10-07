@@ -122,6 +122,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             canonicalPayload = canonicalPayload,
             createdAt = evaluation.createdAt,
             scopeSessionId = evaluation.sessionId,
+            scopeDogId = store.readRecordDog("SESSION", evaluation.sessionId),
             scopeRuleVersionId = sessionPins.first,
             scopePolicyVersionId = sessionPins.second,
             outboxAttemptIds = evaluation.attemptIds,
@@ -151,6 +152,7 @@ class TrainingPersistenceGateway(context: Context) : AutoCloseable {
             canonicalPayload = canonicalPayload,
             createdAt = decision.createdAt,
             scopeSessionId = basisSessions.single(),
+            scopeDogId = store.readRecordDog("SESSION", basisSessions.single()),
             scopeRuleVersionId = sessionPins.first,
             scopePolicyVersionId = sessionPins.second,
             outboxBasisEvaluationIds = decision.basisEvaluationIds
