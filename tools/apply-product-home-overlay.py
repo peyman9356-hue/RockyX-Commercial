@@ -55,12 +55,12 @@ new_home = '''    private fun showHome() {
         val hero = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(7, 18, 28))
         }
-        val rocky = ImageView(this).apply {
-            setImageResource(R.drawable.rocky_home_gem_visual)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+        val livingGem = com.rockyx.livinggem.LivingGemView(this).apply {
+            setRockyDrawable()
+            setState(com.rockyx.livinggem.TrainingUiState.READY)
             contentDescription = "Rocky — Living Training Gem"
         }
-        hero.addView(rocky, FrameLayout.LayoutParams(-1, dp(318)))
+        hero.addView(livingGem, FrameLayout.LayoutParams(-1, dp(318)))
 
         val stateLabel = TextView(this).apply {
             text = if (nextLesson != null) "تمرکز فعلی  •  ${nextLesson.second.title}" else "آماده برای تمرین"
@@ -202,4 +202,26 @@ if not asset_src.is_file():
     raise SystemExit(f"Missing Home asset: {asset_src}")
 asset_dst.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(asset_src, asset_dst)
-print("Product Home + shell physical-side/safe-area overlay applied.")
+
+# Living Training Gem prototype integration.
+# The renderer is kept outside the archived source package so this overlay remains reversible.
+import base64
+
+LIVING_GEM_SRC = Path("tools/living-gem")
+LIVING_GEM_DEST = ROOT / "app/src/main/java/com/rockyx/livinggem"
+LIVING_GEM_DEST.mkdir(parents=True, exist_ok=True)
+for filename in ("VisualState.kt", "GemMesh.kt", "LivingGemView.kt"):
+    source = LIVING_GEM_SRC / filename
+    if not source.is_file():
+        raise SystemExit(f"Missing Living Gem source: {source}")
+    shutil.copyfile(source, LIVING_GEM_DEST / filename)
+
+# Small transparent prototype Rocky asset. This is a replaceable prototype input,
+# not the final commercial Rocky media asset.
+ROCKY_CUTOUT_B64 = """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"""
+ROCKY_ASSET = ROOT / "app/src/main/res/drawable-nodpi/rocky_home_rocky_cutout.webp"
+ROCKY_ASSET.parent.mkdir(parents=True, exist_ok=True)
+ROCKY_ASSET.write_bytes(base64.b64decode(ROCKY_CUTOUT_B64))
+
+print("Living Training Gem renderer + prototype Rocky asset integrated into extracted source.")
+
