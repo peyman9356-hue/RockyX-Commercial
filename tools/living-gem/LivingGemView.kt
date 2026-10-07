@@ -37,8 +37,10 @@ class LivingGemView @JvmOverloads constructor(
     private val dogPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val facetPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val bandPath = Path()
+    private val facetPath = Path()
     private val blinkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -177,10 +179,12 @@ class LivingGemView @JvmOverloads constructor(
         canvas.drawCircle(cx, cy, gemR * 1.13f, glowPaint)
 
         project(cx, cy, gemR)
+        drawBackFacets(canvas, profile, timeSec)
         drawBackStructure(canvas, profile, timeSec)
         drawOuterRings(canvas, cx, cy, gemR, profile)
         drawGoldBand(canvas, cx, cy, gemR, profile)
         drawRocky(canvas, cx, cy, timeSec)
+        drawFrontFacets(canvas, profile, timeSec)
         drawFrontStructure(canvas, profile, timeSec)
         drawBlink(canvas, cx, cy, timeSec)
         drawPulse(canvas, cx, cy, gemR)
@@ -198,6 +202,50 @@ class LivingGemView @JvmOverloads constructor(
             projectedX[i] = cx + x3 * radius * p
             projectedY[i] = cy + y3 * radius * p
             depth[i] = z3 * p
+        }
+    }
+
+    private fun drawBackFacets(canvas: Canvas, profile: VisualProfile, timeSec: Float) {
+        drawFacets(canvas, front = false, profile = profile, timeSec = timeSec)
+    }
+
+    private fun drawFrontFacets(canvas: Canvas, profile: VisualProfile, timeSec: Float) {
+        drawFacets(canvas, front = true, profile = profile, timeSec = timeSec)
+    }
+
+    private fun drawFacets(
+        canvas: Canvas,
+        front: Boolean,
+        profile: VisualProfile,
+        timeSec: Float
+    ) {
+        for (i in mesh.faceA.indices) {
+            val a = mesh.faceA[i]
+            val b = mesh.faceB[i]
+            val c = mesh.faceC[i]
+            val z = (depth[a] + depth[b] + depth[c]) / 3f
+            if ((z >= 0.02f) != front) continue
+
+            val shimmer = 0.5f + 0.5f * (
+                (sin(timeSec * profile.lightSweepHz * 2f * PI.toFloat() + mesh.phase[a]) + 1f) * 0.5f
+            )
+            val alphaBase = if (front) 42f else 24f
+            val alpha = (alphaBase + profile.lightIntensity * 58f * shimmer)
+                .toInt()
+                .coerceIn(8, 118)
+
+            val warm = 0.25f + 0.75f * shimmer
+            val red = (154f + 84f * warm).toInt().coerceIn(0, 255)
+            val green = (178f + 56f * warm).toInt().coerceIn(0, 255)
+            val blue = (186f + 36f * warm).toInt().coerceIn(0, 255)
+
+            facetPaint.color = Color.argb(alpha, red, green, blue)
+            facetPath.reset()
+            facetPath.moveTo(projectedX[a], projectedY[a])
+            facetPath.lineTo(projectedX[b], projectedY[b])
+            facetPath.lineTo(projectedX[c], projectedY[c])
+            facetPath.close()
+            canvas.drawPath(facetPath, facetPaint)
         }
     }
 
