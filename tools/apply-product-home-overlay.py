@@ -42,16 +42,6 @@ new_home = '''    private fun showHome() {
             setPadding(dp(12), dp(4), dp(12), dp(18))
         }
 
-        val identity = TextView(this).apply {
-            text = "ROCKY X  •  ${dog.name}"
-            textSize = 12f
-            letterSpacing = 0.16f
-            setTextColor(Color.rgb(190, 198, 202))
-            gravity = Gravity.RIGHT
-            setPadding(dp(4), dp(4), dp(4), dp(6))
-        }
-        pageRoot.addView(identity, LinearLayout.LayoutParams(-1, dp(30)))
-
         val hero = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(7, 18, 28))
         }
@@ -68,9 +58,9 @@ new_home = '''    private fun showHome() {
             setTextColor(Color.rgb(232, 220, 190))
             gravity = Gravity.RIGHT
             setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = rounded(Color.argb(205, 7, 18, 28), 18f)
+            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         }
-        hero.addView(stateLabel, FrameLayout.LayoutParams(-2, dp(42), Gravity.BOTTOM or Gravity.RIGHT).apply {
+        hero.addView(stateLabel, FrameLayout.LayoutParams(-2, dp(36), Gravity.BOTTOM or Gravity.RIGHT).apply {
             setMargins(dp(10), 0, dp(10), dp(10))
         })
         pageRoot.addView(hero, LinearLayout.LayoutParams(-1, dp(318)).apply {
@@ -80,9 +70,15 @@ new_home = '''    private fun showHome() {
         val start = Button(this).apply {
             text = "شروع تمرین امروز  ›"
             textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(18, 20, 22))
-            background = rounded(Color.rgb(232, 214, 178), 26f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setTextColor(Color.rgb(242, 224, 188))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = dp(29).toFloat()
+                setColor(Color.argb(24, 232, 214, 178))
+                setStroke(dp(1), Color.argb(210, 232, 214, 178))
+            }
+            elevation = 0f
             setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
                 if (nextLesson != null) {
@@ -113,7 +109,7 @@ new_home = '''    private fun showHome() {
             gravity = Gravity.CENTER_VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = rounded(Color.rgb(12, 27, 39), 22f)
+            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         }
         val pathLessons = lessons.take(3)
         pathLessons.forEachIndexed { index, lesson ->
@@ -149,7 +145,7 @@ new_home = '''    private fun showHome() {
             setTextColor(Color.rgb(218, 222, 224))
             gravity = Gravity.RIGHT
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = rounded(Color.rgb(10, 22, 33), 18f)
+            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         }
         pageRoot.addView(insight, LinearLayout.LayoutParams(-1, dp(78)).apply {
             setMargins(0, 0, 0, dp(12))
@@ -181,7 +177,86 @@ new_home = '''    private fun showHome() {
         }
         shellContent.removeAllViews()
         shellContent.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+
+        fun applyReferenceShellTheme() {
+            val surface = Color.rgb(5, 12, 20)
+            val surface2 = Color.rgb(7, 18, 28)
+            val gold = Color.rgb(236, 208, 157)
+            val ivory = Color.rgb(224, 226, 226)
+            val darkFlags = (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR).inv()
+
+            window.statusBarColor = surface
+            window.navigationBarColor = surface
+            window.decorView.systemUiVisibility =
+                window.decorView.systemUiVisibility and darkFlags
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                window.navigationBarDividerColor = surface
+            }
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            shellRoot.setBackgroundColor(surface)
+
+            fun styleComposerNode(v: View) {
+                if (v is android.widget.EditText) {
+                    val hint = v.hint?.toString().orEmpty()
+                    val content = v.text?.toString().orEmpty()
+                    if (hint.contains("Rocky X", true) || content.contains("Rocky X", true) ||
+                        v.contentDescription?.toString()?.contains("Rocky X", true) == true) {
+                        v.setTextColor(ivory)
+                        v.setHintTextColor(Color.rgb(145, 151, 156))
+                        v.background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                            cornerRadius = dp(28).toFloat()
+                            setColor(Color.argb(18, 236, 208, 157))
+                            setStroke(dp(1), Color.argb(175, 236, 208, 157))
+                        }
+                        v.setPadding(dp(18), 0, dp(18), 0)
+                    }
+                }
+                if (v is android.widget.ImageButton) {
+                    v.setColorFilter(gold, android.graphics.PorterDuff.Mode.SRC_IN)
+                    v.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                }
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) styleComposerNode(v.getChildAt(i))
+                }
+            }
+
+            fun styleHeaderNode(v: View) {
+                if (v is android.widget.ImageButton) {
+                    v.setColorFilter(gold, android.graphics.PorterDuff.Mode.SRC_IN)
+                    v.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                } else if (v is android.widget.TextView) {
+                    v.setTextColor(ivory)
+                }
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) styleHeaderNode(v.getChildAt(i))
+                }
+            }
+
+            fun visit(v: View) {
+                val rootHeight = shellRoot.height
+                val topBand = v.top <= dp(124) && v.height <= dp(140) && v.width >= shellRoot.width * 0.70f
+                val bottomBand = v.bottom >= rootHeight - dp(210) && v.height <= dp(190) && v.width >= shellRoot.width * 0.70f
+                if (topBand) {
+                    v.setBackgroundColor(surface)
+                    styleHeaderNode(v)
+                }
+                if (bottomBand) {
+                    v.setBackgroundColor(surface)
+                    styleComposerNode(v)
+                }
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) visit(v.getChildAt(i))
+                }
+            }
+
+            visit(shellRoot)
+            styleComposerNode(shellRoot)
+        }
+
         setContentView(shellRoot)
+        shellRoot.post { applyReferenceShellTheme() }
     }
 '''
 replace_once(MAIN, old_home, new_home, "Home replacement")
