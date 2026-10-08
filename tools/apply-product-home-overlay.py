@@ -290,7 +290,7 @@ REFERENCE_HOME_ASSET.parent.mkdir(parents=True, exist_ok=True)
 REFERENCE_HOME_ASSET.write_bytes(base64.b64decode(REFERENCE_HOME_B64))
 LIVING_GEM_DEST.mkdir(parents=True, exist_ok=True)
 for filename in ("VisualState.kt", "GemMesh.kt", "LivingGemView.kt", "ReferenceHomeVisualView.kt"):
-    source = LIVING_GEM_SRC / filename
+    source = Path("tools/home-reference/ReferenceHomeVisualView.kt") if filename == "ReferenceHomeVisualView.kt" else LIVING_GEM_SRC / filename
     if not source.is_file():
         raise SystemExit(f"Missing Living Gem source: {source}")
     destination = REFERENCE_HOME_DEST / filename if filename == "ReferenceHomeVisualView.kt" else LIVING_GEM_DEST / filename
