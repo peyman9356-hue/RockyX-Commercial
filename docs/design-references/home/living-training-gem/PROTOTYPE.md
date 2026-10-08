@@ -1,6 +1,6 @@
 # Rocky X — Living Training Gem Prototype
 
-Status: PROTOTYPE / BUILD VERIFICATION PENDING
+Status: PROTOTYPE / BUILD VERIFICATION IN PROGRESS
 
 Reference:
 LIVING-TRAINING-GEM-REF-01
@@ -58,3 +58,7 @@ This prototype is not called successful until:
 4. User observes the Home motion.
 5. User compares it directly against LIVING-TRAINING-GEM-REF-01.
 6. Any visual mismatch is recorded and fixed.
+
+Current action:
+- Trigger a fresh CI build from the current branch head so the APK includes the latest Living Gem mesh/facet implementation.
+- Do not treat Run #141 as proof for this newer implementation.
