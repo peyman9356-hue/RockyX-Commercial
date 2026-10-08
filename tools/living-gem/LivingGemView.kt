@@ -13,6 +13,7 @@ import android.util.AttributeSet
 import android.view.View
 import com.rockyx.app.R
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -58,6 +59,7 @@ class LivingGemView @JvmOverloads constructor(
     private var lastNanos = 0L
     private var yaw = 0f
     private var pulse = 0f
+    private var visualTimeSec = 0f
     private var blinkPulse = 0f
     private var cachedW = 0
     private var cachedH = 0
@@ -72,6 +74,7 @@ class LivingGemView @JvmOverloads constructor(
             val profile = VisualProfiles.forState(state)
             val motion = if (reducedMotion) 0.14f else 1f
             yaw += profile.orbitDegPerSec * motion * dt * (PI.toFloat() / 180f)
+            visualTimeSec += dt
             pulse = (pulse - dt * 1.65f).coerceAtLeast(0f)
             blinkPulse = (blinkPulse - dt * 4.8f).coerceAtLeast(0f)
             invalidate()
@@ -168,8 +171,8 @@ class LivingGemView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
         val cx = w * 0.5f
-        val cy = h * 0.40f
-        val gemR = min(w * 0.445f, h * 0.40f)
+        val cy = h * 0.49f
+        val gemR = min(w * 0.47f, h * 0.48f)
         val profile = VisualProfiles.forState(state)
         val timeSec = if (lastNanos == 0L) 0f else lastNanos / 1_000_000_000f
 
@@ -182,9 +185,9 @@ class LivingGemView @JvmOverloads constructor(
         drawBackFacets(canvas, profile, timeSec)
         drawBackStructure(canvas, profile, timeSec)
         drawOuterRings(canvas, cx, cy, gemR, profile)
-        drawGoldBand(canvas, cx, cy, gemR, profile)
         drawRocky(canvas, cx, cy, timeSec)
         drawFrontFacets(canvas, profile, timeSec)
+        drawGoldReflection(canvas, profile, timeSec)
         drawFrontStructure(canvas, profile, timeSec)
         drawBlink(canvas, cx, cy, timeSec)
         drawPulse(canvas, cx, cy, gemR)
@@ -219,6 +222,10 @@ class LivingGemView @JvmOverloads constructor(
         profile: VisualProfile,
         timeSec: Float
     ) {
+        val cadence = pulseCadenceSec()
+        val pulseValue = automaticPulseValue(cadence)
+        val pulseCenter = ((visualTimeSec / cadence) * 2f * PI.toFloat()) - PI.toFloat()
+
         for (i in mesh.faceA.indices) {
             val a = mesh.faceA[i]
             val b = mesh.faceB[i]
@@ -229,15 +236,19 @@ class LivingGemView @JvmOverloads constructor(
             val shimmer = 0.5f + 0.5f * (
                 (sin(timeSec * profile.lightSweepHz * 2f * PI.toFloat() + mesh.phase[a]) + 1f) * 0.5f
             )
-            val alphaBase = if (front) 42f else 24f
-            val alpha = (alphaBase + profile.lightIntensity * 58f * shimmer)
+            val faceAngle = (mesh.theta[a] + mesh.theta[b] + mesh.theta[c]) / 3f + yaw
+            val pulseHit = ((0.42f - angularDistance(faceAngle, pulseCenter)).coerceAtLeast(0f) / 0.42f)
+
+            val alphaBase = if (front) 52f else 28f
+            val alpha = (alphaBase + profile.lightIntensity * 66f * shimmer + pulseHit * pulseValue * 84f)
                 .toInt()
-                .coerceIn(8, 118)
+                .coerceIn(8, 158)
 
             val warm = 0.25f + 0.75f * shimmer
-            val red = (154f + 84f * warm).toInt().coerceIn(0, 255)
-            val green = (178f + 56f * warm).toInt().coerceIn(0, 255)
-            val blue = (186f + 36f * warm).toInt().coerceIn(0, 255)
+            val goldMix = (pulseHit * pulseValue * 0.85f).coerceIn(0f, 0.85f)
+            val red = (154f + 84f * warm + 55f * goldMix).toInt().coerceIn(0, 255)
+            val green = (178f + 56f * warm + 28f * goldMix).toInt().coerceIn(0, 255)
+            val blue = (186f + 36f * warm - 42f * goldMix).toInt().coerceIn(0, 255)
 
             facetPaint.color = Color.argb(alpha, red, green, blue)
             facetPath.reset()
@@ -322,54 +333,63 @@ class LivingGemView @JvmOverloads constructor(
         )
     }
 
-    private fun drawGoldBand(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float,
-        profile: VisualProfile
-    ) {
-        val bandLon = yaw * 0.82f + 0.55f
-        bandPath.reset()
-        val points = 11
-        for (i in 0 until points) {
-            val lat = -0.78f + 1.56f * i / (points - 1)
-            val cl = cos(lat)
-            val x3 = cl * cos(bandLon) * 0.96f
-            val y3 = sin(lat) * 0.94f
-            val z3 = cl * sin(bandLon) * 0.96f
-            val p = 3.1f / (3.1f - z3 * 0.82f)
-            val x = cx + x3 * radius * p
-            val y = cy + y3 * radius * p
-            if (i == 0) bandPath.moveTo(x, y) else bandPath.lineTo(x, y)
-        }
+    private fun pulseCadenceSec(): Float = when (state) {
+        TrainingUiState.TRAINING -> 4.6f
+        TrainingUiState.SUCCESS -> 4.2f
+        TrainingUiState.READY -> 5.6f
+        TrainingUiState.IDLE -> 6.4f
+        TrainingUiState.REST -> 7.4f
+    }
 
-        val width = radius * 0.23f
-        var i = points - 1
-        while (i >= 0) {
-            val lat = -0.78f + 1.56f * i / (points - 1)
-            val cl = cos(lat)
-            val x3 = cl * cos(bandLon + 0.13f) * 0.96f
-            val y3 = sin(lat) * 0.94f
-            val z3 = cl * sin(bandLon + 0.13f) * 0.96f
-            val p = 3.1f / (3.1f - z3 * 0.82f)
-            val x = cx + x3 * radius * p
-            val y = cy + y3 * radius * p
-            bandPath.lineTo(x - width * 0.42f, y)
-            i--
-        }
-        bandPath.close()
+    private fun angularDistance(a: Float, b: Float): Float {
+        val full = 2f * PI.toFloat()
+        val d = abs((a - b) % full)
+        return min(d, full - d)
+    }
 
-        bandPaint.color = Color.argb(
-            (78f + profile.lightIntensity * 74f + pulse * 70f).toInt().coerceAtMost(205),
-            244, 207, 143
-        )
-        canvas.drawPath(bandPath, bandPaint)
+    private fun automaticPulseValue(cadence: Float): Float {
+        val phase = (visualTimeSec % cadence) / cadence
+        val duration = 0.13f
+        if (phase > duration) return 0f
+        val t = phase / duration
+        return sin(t * PI.toFloat()).coerceIn(0f, 1f)
+    }
+
+    private fun drawGoldReflection(canvas: Canvas, profile: VisualProfile, timeSec: Float) {
+        val cadence = pulseCadenceSec()
+        val pulseValue = automaticPulseValue(cadence)
+        val reflectionCenter = yaw + 0.62f
+        val pulseCenter = ((visualTimeSec / cadence) * 2f * PI.toFloat()) - PI.toFloat()
+
+        for (i in mesh.faceA.indices) {
+            val a = mesh.faceA[i]
+            val b = mesh.faceB[i]
+            val c = mesh.faceC[i]
+            val z = (depth[a] + depth[b] + depth[c]) / 3f
+            if (z < 0.08f) continue
+
+            val angle = (mesh.theta[a] + mesh.theta[b] + mesh.theta[c]) / 3f + yaw
+            val staticHit = ((0.25f - angularDistance(angle, reflectionCenter)).coerceAtLeast(0f) / 0.25f)
+            val movingHit = ((0.34f - angularDistance(angle, pulseCenter)).coerceAtLeast(0f) / 0.34f) * pulseValue
+            val strength = (staticHit * 0.46f + movingHit).coerceIn(0f, 1f)
+            if (strength <= 0.025f) continue
+
+            facetPaint.color = Color.argb(
+                (24f + strength * 126f).toInt().coerceIn(0, 156),
+                244, 210, 154
+            )
+            facetPath.reset()
+            facetPath.moveTo(projectedX[a], projectedY[a])
+            facetPath.lineTo(projectedX[b], projectedY[b])
+            facetPath.lineTo(projectedX[c], projectedY[c])
+            facetPath.close()
+            canvas.drawPath(facetPath, facetPaint)
+        }
     }
 
     private fun drawRocky(canvas: Canvas, cx: Float, cy: Float, timeSec: Float) {
         val bitmap = dogBitmap ?: return
-        val baseH = min(height * 0.53f, 356f)
+        val baseH = min(height * 0.70f, 470f)
         val baseW = baseH * bitmap.width / bitmap.height.toFloat()
         val breath = 1f + 0.006f * sin(timeSec * 1.4f)
         val dx = sin(timeSec * 0.45f) * 1.8f
@@ -377,7 +397,7 @@ class LivingGemView @JvmOverloads constructor(
         val w = baseW * breath
         val h = baseH * breath
         val left = cx - w * 0.5f + dx
-        val top = cy - h * 0.23f + dy
+        val top = cy - h * 0.33f + dy
         canvas.drawBitmap(bitmap, null, android.graphics.RectF(left, top, left + w, top + h), dogPaint)
     }
 
@@ -401,13 +421,16 @@ class LivingGemView @JvmOverloads constructor(
     }
 
     private fun drawPulse(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
-        if (pulse <= 0f) return
-        pulsePaint.strokeWidth = 2.6f
-        pulsePaint.color = Color.argb((180f * pulse).toInt(), 255, 219, 157)
-        val r = radius * (0.98f + (1f - pulse) * 0.10f)
+        val automatic = automaticPulseValue(pulseCadenceSec())
+        val p = maxOf(pulse, automatic)
+        if (p <= 0.01f) return
+
+        pulsePaint.strokeWidth = 2.0f + p * 1.4f
+        pulsePaint.color = Color.argb((68f * p).toInt().coerceIn(0, 88), 255, 219, 157)
+        val r = radius * (0.84f + (1f - p) * 0.22f)
         canvas.drawOval(
-            cx - r, cy - r * 0.98f,
-            cx + r, cy + r * 0.98f, pulsePaint
+            cx - r, cy - r * 0.97f,
+            cx + r, cy + r * 0.97f, pulsePaint
         )
     }
 }
