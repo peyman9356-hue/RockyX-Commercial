@@ -179,13 +179,13 @@ new_home = '''    private fun showHome() {
 
         fun referenceHeaderDrawable(label: String, tint: Int): android.graphics.drawable.Drawable =
             object : android.graphics.drawable.Drawable() {
-                private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                     color = tint
                     textSize = dp(15).toFloat()
-                    textAlign = Paint.Align.CENTER
+                    textAlign = android.graphics.Paint.Align.CENTER
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                 }
-                override fun draw(canvas: Canvas) {
+                override fun draw(canvas: android.graphics.Canvas) {
                     val b = bounds
                     canvas.drawText(label, b.exactCenterX(), b.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
                 }
