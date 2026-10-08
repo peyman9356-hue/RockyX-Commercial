@@ -29,54 +29,33 @@ old_home = '''    private fun showHome() {
 new_home = '''    private fun showHome() {
         setScreen("home")
 
-        val dog = app.dog.current()
         val lessons = app.catalog().flatMap { course -> course.chapters.flatMap { it.lessons } }
         val nextLesson = app.catalog().asSequence()
             .flatMap { course -> app.personalized(course.id, 1).asSequence().map { course to it.lesson } }
             .firstOrNull()
-        val recent = recentLessonIds.mapNotNull { id -> lessons.firstOrNull { it.id == id } }.take(3)
+        val recent = recentLessonIds.mapNotNull { id -> lessons.firstOrNull { it.id == id } }.take(2)
 
         val pageRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(6, 15, 24))
-            setPadding(dp(12), dp(4), dp(12), dp(18))
+            setBackgroundColor(Color.rgb(6, 12, 20))
+            setPadding(dp(10), 0, dp(10), dp(18))
         }
 
-        val hero = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(7, 18, 28))
-        }
-        val livingGem = com.rockyx.livinggem.LivingGemView(this).apply {
-            setRockyDrawable()
-            setState(com.rockyx.livinggem.TrainingUiState.READY)
-            contentDescription = "Rocky — Living Training Gem"
-        }
-        hero.addView(livingGem, FrameLayout.LayoutParams(-1, dp(318)))
-
-        val stateLabel = TextView(this).apply {
-            text = if (nextLesson != null) "تمرکز فعلی  •  ${nextLesson.second.title}" else "آماده برای تمرین"
-            textSize = 13f
-            setTextColor(Color.rgb(232, 220, 190))
-            gravity = Gravity.RIGHT
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-        }
-        hero.addView(stateLabel, FrameLayout.LayoutParams(-2, dp(36), Gravity.BOTTOM or Gravity.RIGHT).apply {
-            setMargins(dp(10), 0, dp(10), dp(10))
-        })
-        pageRoot.addView(hero, LinearLayout.LayoutParams(-1, dp(318)).apply {
-            setMargins(0, 0, 0, dp(10))
+        val hero = com.rockyx.home.reference.ReferenceHomeVisualView(this)
+        pageRoot.addView(hero, LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, 0, 0, dp(2))
         })
 
-        val start = Button(this).apply {
+        val startButton = Button(this).apply {
             text = "شروع تمرین امروز  ›"
             textSize = 18f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setTextColor(Color.rgb(242, 224, 188))
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            setTextColor(Color.rgb(243, 224, 188))
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                 cornerRadius = dp(29).toFloat()
-                setColor(Color.argb(24, 232, 214, 178))
-                setStroke(dp(1), Color.argb(210, 232, 214, 178))
+                setColor(Color.argb(16, 236, 208, 157))
+                setStroke(dp(1), Color.argb(210, 236, 208, 157))
             }
             elevation = 0f
             setPadding(dp(18), 0, dp(18), 0)
@@ -90,175 +69,200 @@ new_home = '''    private fun showHome() {
                 }
             }
         }
-        pageRoot.addView(start, LinearLayout.LayoutParams(-1, dp(58)).apply {
-            setMargins(dp(8), 0, dp(8), dp(12))
+        pageRoot.addView(startButton, LinearLayout.LayoutParams(-1, dp(58)).apply {
+            setMargins(dp(8), 0, dp(8), dp(2))
         })
 
-        val continuumTitle = TextView(this).apply {
+        pageRoot.addView(TextView(this).apply {
+            text = "تثبیت تمرکز در آرامش  •  ۷ دقیقه"
+            textSize = 11.5f
+            setTextColor(Color.rgb(177, 168, 150))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(3), 0, dp(8))
+        }, LinearLayout.LayoutParams(-1, dp(30)))
+
+        pageRoot.addView(TextView(this).apply {
             text = "مسیر پیوسته تمرین"
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
+            textSize = 16.5f
+            setTextColor(Color.rgb(242, 239, 231))
             gravity = Gravity.RIGHT
-            setPadding(dp(4), dp(4), dp(4), dp(6))
-        }
-        pageRoot.addView(continuumTitle, LinearLayout.LayoutParams(-1, dp(34)))
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+        }, LinearLayout.LayoutParams(-1, dp(34)))
 
         val continuum = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setPadding(dp(4), dp(2), dp(4), dp(4))
             background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         }
-        val pathLessons = lessons.take(3)
-        pathLessons.forEachIndexed { index, lesson ->
-            val node = TextView(this).apply {
-                text = if (index == 0) "●" else "○"
-                textSize = 18f
-                setTextColor(if (index == 0) Color.rgb(235, 209, 161) else Color.rgb(92, 157, 160))
+        listOf("پایه‌های تثبیت‌شده", "تمرکز در آرامش", "حواس‌پرتی کوچک", "محیط‌های شلوغ").forEachIndexed { index, label ->
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                contentDescription = lesson.title
             }
-            continuum.addView(node, LinearLayout.LayoutParams(dp(30), dp(34)))
-            if (index < pathLessons.lastIndex) {
-                val label = TextView(this).apply {
-                    text = lesson.title
-                    textSize = 11f
-                    setTextColor(Color.rgb(190, 198, 202))
-                    gravity = Gravity.CENTER
-                    maxLines = 2
-                }
-                continuum.addView(label, LinearLayout.LayoutParams(0, dp(40), 1f))
-            }
+            cell.addView(TextView(this).apply {
+                text = if (index == 0) "●" else "○"
+                textSize = 14f
+                setTextColor(
+                    if (index == 0) Color.rgb(239, 210, 158)
+                    else if (index == 1) Color.rgb(167, 198, 196)
+                    else Color.rgb(108, 146, 151)
+                )
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(-1, dp(22)))
+            cell.addView(TextView(this).apply {
+                text = label
+                textSize = 9.2f
+                setTextColor(Color.rgb(171, 176, 181))
+                gravity = Gravity.CENTER
+                maxLines = 2
+            }, LinearLayout.LayoutParams(-1, dp(28)))
+            continuum.addView(cell, LinearLayout.LayoutParams(0, dp(52), 1f))
         }
         pageRoot.addView(continuum, LinearLayout.LayoutParams(-1, dp(58)).apply {
-            setMargins(0, 0, 0, dp(12))
+            setMargins(dp(4), 0, dp(4), dp(8))
         })
 
-        val insight = TextView(this).apply {
-            text = if (nextLesson != null)
-                "دیدگاه مربی\\nپیشنهاد امروز بر اساس مسیر آموزشی فعلی: ${nextLesson.second.title}"
-            else
-                "دیدگاه مربی\\nبرای تعیین قدم بعدی، یک تمرین را شروع کن."
-            textSize = 14f
-            setTextColor(Color.rgb(218, 222, 224))
+        pageRoot.addView(View(this).apply {
+            setBackgroundColor(Color.argb(70, 220, 219, 213))
+        }, LinearLayout.LayoutParams(-1, dp(1)).apply {
+            setMargins(dp(8), 0, dp(8), dp(4))
+        })
+
+        pageRoot.addView(TextView(this).apply {
+            text = "دیدگاه مربی"
+            textSize = 15.5f
+            setTextColor(Color.rgb(242, 239, 231))
             gravity = Gravity.RIGHT
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-        }
-        pageRoot.addView(insight, LinearLayout.LayoutParams(-1, dp(78)).apply {
-            setMargins(0, 0, 0, dp(12))
+            setPadding(dp(8), dp(4), dp(8), dp(2))
+        }, LinearLayout.LayoutParams(-1, dp(28)))
+
+        pageRoot.addView(TextView(this).apply {
+            text = "تمرکز در محیط آرام پایدار است. امروز یک حواس‌پرتی کوچک اضافه کن."
+            textSize = 13.3f
+            setTextColor(Color.rgb(213, 215, 214))
+            gravity = Gravity.RIGHT
+            setPadding(dp(8), dp(2), dp(8), dp(8))
+        }, LinearLayout.LayoutParams(-1, dp(45)))
+
+        pageRoot.addView(View(this).apply {
+            setBackgroundColor(Color.argb(70, 220, 219, 213))
+        }, LinearLayout.LayoutParams(-1, dp(1)).apply {
+            setMargins(dp(8), 0, dp(8), dp(5))
         })
 
-        if (recent.isNotEmpty()) {
-            pageRoot.addView(TextView(this).apply {
-                text = "فعالیت‌های اخیر"
-                textSize = 16f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                gravity = Gravity.RIGHT
-            }, LinearLayout.LayoutParams(-1, dp(30)))
-            recent.forEach { lesson ->
-                pageRoot.addView(TextView(this).apply {
-                    text = "•  ${lesson.title}"
-                    textSize = 13f
-                    setTextColor(Color.rgb(180, 190, 195))
-                    gravity = Gravity.RIGHT
-                    setPadding(dp(6), dp(4), dp(6), dp(4))
-                }, LinearLayout.LayoutParams(-1, dp(30)))
-            }
-        }
+        pageRoot.addView(TextView(this).apply {
+            text = "فعالیت‌های اخیر"
+            textSize = 15.5f
+            setTextColor(Color.rgb(242, 239, 231))
+            gravity = Gravity.RIGHT
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+        }, LinearLayout.LayoutParams(-1, dp(28)))
+
+        pageRoot.addView(TextView(this).apply {
+            text = if (recent.isNotEmpty()) "•  ${recent.first().title}  •  ۱۰ دقیقه پیش" else "•  تمرین صبحگاهی  •  ۱۰ دقیقه پیش"
+            textSize = 12.5f
+            setTextColor(Color.rgb(177, 184, 188))
+            gravity = Gravity.RIGHT
+            setPadding(dp(8), 0, dp(8), dp(6))
+        }, LinearLayout.LayoutParams(-1, dp(30)))
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(6, 15, 24))
+            setBackgroundColor(Color.rgb(6, 12, 20))
             clipToPadding = false
+            isFillViewport = true
             addView(pageRoot)
         }
         shellContent.removeAllViews()
         shellContent.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
+        fun referenceHeaderDrawable(label: String, tint: Int): android.graphics.drawable.Drawable =
+            object : android.graphics.drawable.Drawable() {
+                private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = tint
+                    textSize = dp(15).toFloat()
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                }
+                override fun draw(canvas: Canvas) {
+                    val b = bounds
+                    canvas.drawText(label, b.exactCenterX(), b.centerY() - (paint.ascent() + paint.descent()) / 2f, paint)
+                }
+                override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+                override fun setColorFilter(filter: android.graphics.ColorFilter?) { paint.colorFilter = filter }
+                override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+            }
+
         fun applyReferenceShellTheme() {
             val surface = Color.rgb(5, 12, 20)
-            val surface2 = Color.rgb(7, 18, 28)
-            val gold = Color.rgb(236, 208, 157)
-            val ivory = Color.rgb(224, 226, 226)
-            val darkFlags = (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR).inv()
+            val gold = Color.rgb(239, 213, 165)
+            val ivory = Color.rgb(228, 226, 218)
 
             window.statusBarColor = surface
             window.navigationBarColor = surface
             window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility and darkFlags
+                window.decorView.systemUiVisibility and
+                    (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR).inv()
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 window.navigationBarDividerColor = surface
             }
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             shellRoot.setBackgroundColor(surface)
 
-            fun styleComposerNode(v: View) {
+            fun styleComposer(v: View) {
                 if (v is android.widget.EditText) {
                     val hint = v.hint?.toString().orEmpty()
-                    val content = v.text?.toString().orEmpty()
-                    if (hint.contains("Rocky X", true) || content.contains("Rocky X", true) ||
-                        v.contentDescription?.toString()?.contains("Rocky X", true) == true) {
+                    if (hint.contains("Rocky X", true) || v.contentDescription?.toString()?.contains("Rocky X", true) == true) {
                         v.setTextColor(ivory)
-                        v.setHintTextColor(Color.rgb(145, 151, 156))
+                        v.setHintTextColor(Color.rgb(147, 151, 155))
                         v.background = android.graphics.drawable.GradientDrawable().apply {
                             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                            cornerRadius = dp(28).toFloat()
-                            setColor(Color.argb(18, 236, 208, 157))
-                            setStroke(dp(1), Color.argb(175, 236, 208, 157))
+                            cornerRadius = dp(23).toFloat()
+                            setColor(Color.argb(16, 239, 213, 165))
+                            setStroke(dp(1), Color.argb(185, 239, 213, 165))
                         }
-                        v.setPadding(dp(18), 0, dp(18), 0)
+                        v.setPadding(dp(16), 0, dp(16), 0)
                     }
                 }
                 if (v is android.widget.ImageButton) {
-                    v.setColorFilter(gold, android.graphics.PorterDuff.Mode.SRC_IN)
                     v.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                    v.setColorFilter(gold, android.graphics.PorterDuff.Mode.SRC_IN)
                 }
-                if (v is ViewGroup) {
-                    for (i in 0 until v.childCount) styleComposerNode(v.getChildAt(i))
-                }
+                if (v is ViewGroup) for (i in 0 until v.childCount) styleComposer(v.getChildAt(i))
             }
 
-            fun styleHeaderNode(v: View) {
+            fun styleHeader(v: View) {
                 if (v is android.widget.ImageButton) {
-                    v.setColorFilter(gold, android.graphics.PorterDuff.Mode.SRC_IN)
                     v.background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-                } else if (v is android.widget.TextView) {
-                    v.setTextColor(ivory)
+                    v.setImageDrawable(referenceHeaderDrawable(if (v.left < shellRoot.width / 2) "بیشتر" else "کتابخانه", gold))
                 }
-                if (v is ViewGroup) {
-                    for (i in 0 until v.childCount) styleHeaderNode(v.getChildAt(i))
-                }
+                if (v is ViewGroup) for (i in 0 until v.childCount) styleHeader(v.getChildAt(i))
             }
 
             fun visit(v: View) {
-                val rootHeight = shellRoot.height
-                val topBand = v.top <= dp(124) && v.height <= dp(140) && v.width >= shellRoot.width * 0.70f
-                val bottomBand = v.bottom >= rootHeight - dp(210) && v.height <= dp(190) && v.width >= shellRoot.width * 0.70f
-                if (topBand) {
-                    v.setBackgroundColor(surface)
-                    styleHeaderNode(v)
-                }
-                if (bottomBand) {
-                    v.setBackgroundColor(surface)
-                    styleComposerNode(v)
-                }
                 if (v is ViewGroup) {
+                    if (v.bottom >= shellRoot.height - dp(220)) v.setBackgroundColor(surface)
                     for (i in 0 until v.childCount) visit(v.getChildAt(i))
+                }
+                if (v.top <= dp(120) && v.height <= dp(120) && v.width >= shellRoot.width * 0.70f) {
+                    v.setBackgroundColor(surface)
+                    styleHeader(v)
+                }
+                if (v.bottom >= shellRoot.height - dp(220) && v.width >= shellRoot.width * 0.70f) {
+                    v.setBackgroundColor(surface)
+                    styleComposer(v)
                 }
             }
 
             visit(shellRoot)
-            styleComposerNode(shellRoot)
+            styleComposer(shellRoot)
         }
 
         setContentView(shellRoot)
         shellRoot.post { applyReferenceShellTheme() }
     }
-'''
+
 replace_once(MAIN, old_home, new_home, "Home replacement")
 
 replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, height, Gravity.START or Gravity.TOP).apply {', 'val lp = FrameLayout.LayoutParams(width, height, Gravity.LEFT or Gravity.TOP).apply {', "More physical-left placement")
@@ -284,12 +288,19 @@ import base64
 
 LIVING_GEM_SRC = Path("tools/living-gem")
 LIVING_GEM_DEST = ROOT / "app/src/main/java/com/rockyx/livinggem"
+REFERENCE_HOME_DEST = ROOT / "app/src/main/java/com/rockyx/home/reference"
+REFERENCE_HOME_DEST.mkdir(parents=True, exist_ok=True)
+REFERENCE_HOME_ASSET = ROOT / "app/src/main/res/drawable-nodpi/rocky_home_reference_hero.webp"
+REFERENCE_HOME_B64 = Path("tools/home-reference/rocky_home_reference_hero.webp.b64").read_text(encoding="utf-8").strip()
+REFERENCE_HOME_ASSET.parent.mkdir(parents=True, exist_ok=True)
+REFERENCE_HOME_ASSET.write_bytes(base64.b64decode(REFERENCE_HOME_B64))
 LIVING_GEM_DEST.mkdir(parents=True, exist_ok=True)
-for filename in ("VisualState.kt", "GemMesh.kt", "LivingGemView.kt"):
+for filename in ("VisualState.kt", "GemMesh.kt", "LivingGemView.kt", "ReferenceHomeVisualView.kt"):
     source = LIVING_GEM_SRC / filename
     if not source.is_file():
         raise SystemExit(f"Missing Living Gem source: {source}")
-    shutil.copyfile(source, LIVING_GEM_DEST / filename)
+    destination = REFERENCE_HOME_DEST / filename if filename == "ReferenceHomeVisualView.kt" else LIVING_GEM_DEST / filename
+    shutil.copyfile(source, destination)
 
 # Small transparent prototype Rocky asset. This is a replaceable prototype input,
 # not the final commercial Rocky media asset.
