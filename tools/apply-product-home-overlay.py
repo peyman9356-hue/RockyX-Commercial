@@ -267,13 +267,7 @@ replace_once(MAIN, old_home, new_home, "Home replacement")
 
 replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, height, Gravity.START or Gravity.TOP).apply {', 'val lp = FrameLayout.LayoutParams(width, height, Gravity.LEFT or Gravity.TOP).apply {', "More physical-left placement")
 replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, -1, Gravity.END)', 'val lp = FrameLayout.LayoutParams(width, -1, Gravity.RIGHT)', "Library physical-right placement")
-replace_once(MAIN, '        panel.addView(bottomBar, LinearLayout.LayoutParams(-1, dp(64)))\n        val width = (resources.displayMetrics.widthPixels * 0.58f).roundToInt()', '''        panel.addView(bottomBar, LinearLayout.LayoutParams(-1, dp(64)))
-        ViewCompat.setOnApplyWindowInsetsListener(bottomBar) { v, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(dp(14), dp(8), dp(14), dp(10) + bars.bottom)
-            insets
-        }
-        val width = (resources.displayMetrics.widthPixels * 0.58f).roundToInt()''', "Library bottom safe-area")
+# Library safe-area handling is owned by the Library UI overlay; Home only normalizes the global shell theme.
 
 asset_src = Path("app/src/main/res/drawable-nodpi/rocky_home_gem_visual.jpg")
 asset_dst = ROOT / "app/src/main/res/drawable-nodpi/rocky_home_gem_visual.jpg"
