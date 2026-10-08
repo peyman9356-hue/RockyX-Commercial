@@ -263,6 +263,7 @@ new_home = '''    private fun showHome() {
         shellRoot.post { applyReferenceShellTheme() }
     }
 
+'''
 replace_once(MAIN, old_home, new_home, "Home replacement")
 
 replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, height, Gravity.START or Gravity.TOP).apply {', 'val lp = FrameLayout.LayoutParams(width, height, Gravity.LEFT or Gravity.TOP).apply {', "More physical-left placement")
