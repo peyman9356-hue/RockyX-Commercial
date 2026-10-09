@@ -1,5 +1,8 @@
 from pathlib import Path
+import base64
 import shutil
+
+from home_reference_asset_validation import decode_validated_webp_base64_file
 
 ROOT = Path("rockyx-src/rev14src")
 MAIN = ROOT / "app/src/main/java/com/rockyx/app/MainActivity.kt"
@@ -46,6 +49,7 @@ new_home = '''    private fun showHome() {
             setMargins(0, 0, 0, dp(2))
         })
 
+        var trainingStartPending = false
         val startButton = Button(this).apply {
             text = "شروع تمرین امروز  ›"
             textSize = 18f
@@ -60,10 +64,15 @@ new_home = '''    private fun showHome() {
             elevation = 0f
             setPadding(dp(18), 0, dp(18), 0)
             setOnClickListener {
+                if (trainingStartPending) return@setOnClickListener
                 if (nextLesson != null) {
-                    shellState.closePanels()
-                    removeOverlay()
-                    showLesson(nextLesson.first, nextLesson.second)
+                    trainingStartPending = true
+                    val trainingIntentEventId = java.util.UUID.randomUUID().toString()
+                    hero.playTrainingIntentPulse(trainingIntentEventId) {
+                        shellState.closePanels()
+                        removeOverlay()
+                        showLesson(nextLesson.first, nextLesson.second)
+                    }
                 } else {
                     Toast.makeText(this@MainActivity, "هنوز تمرین بعدی قابل تعیین نیست.", Toast.LENGTH_SHORT).show()
                 }
@@ -270,25 +279,17 @@ replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, height, Gravity.STA
 replace_once(MAIN, 'val lp = FrameLayout.LayoutParams(width, -1, Gravity.END)', 'val lp = FrameLayout.LayoutParams(width, -1, Gravity.RIGHT)', "Library physical-right placement")
 # Library safe-area handling is owned by the Library UI overlay; Home only normalizes the global shell theme.
 
-asset_src = Path("app/src/main/res/drawable-nodpi/rocky_home_gem_visual.jpg")
-asset_dst = ROOT / "app/src/main/res/drawable-nodpi/rocky_home_gem_visual.jpg"
-if not asset_src.is_file():
-    raise SystemExit(f"Missing Home asset: {asset_src}")
-asset_dst.parent.mkdir(parents=True, exist_ok=True)
-shutil.copyfile(asset_src, asset_dst)
-
 # Living Training Gem prototype integration.
 # The renderer is kept outside the archived source package so this overlay remains reversible.
-import base64
 
 LIVING_GEM_SRC = Path("tools/living-gem")
 LIVING_GEM_DEST = ROOT / "app/src/main/java/com/rockyx/livinggem"
 REFERENCE_HOME_DEST = ROOT / "app/src/main/java/com/rockyx/home/reference"
 REFERENCE_HOME_DEST.mkdir(parents=True, exist_ok=True)
 REFERENCE_HOME_ASSET = ROOT / "app/src/main/res/drawable-nodpi/rocky_home_reference_hero.webp"
-REFERENCE_HOME_B64 = Path("tools/home-reference/rocky_home_reference_hero.webp.b64").read_text(encoding="utf-8").strip()
+REFERENCE_HOME_B64 = Path("tools/home-reference/rocky_home_reference_hero.webp.b64")
 REFERENCE_HOME_ASSET.parent.mkdir(parents=True, exist_ok=True)
-REFERENCE_HOME_ASSET.write_bytes(base64.b64decode(REFERENCE_HOME_B64))
+REFERENCE_HOME_ASSET.write_bytes(decode_validated_webp_base64_file(REFERENCE_HOME_B64))
 LIVING_GEM_DEST.mkdir(parents=True, exist_ok=True)
 for filename in ("VisualState.kt", "GemMesh.kt", "LivingGemView.kt", "ReferenceHomeVisualView.kt"):
     source = Path("tools/home-reference/ReferenceHomeVisualView.kt") if filename == "ReferenceHomeVisualView.kt" else LIVING_GEM_SRC / filename
