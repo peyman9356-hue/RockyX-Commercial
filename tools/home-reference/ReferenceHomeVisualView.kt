@@ -7,70 +7,93 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
-import android.graphics.Shader
 import android.view.View
 import com.rockyx.app.R
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
- * Reference-fidelity Home hero.
+ * Reference-led Home hero renderer.
  *
- * The static visual is the user's approved Falow/reference composition.
- * The renderer adds only a restrained light pulse so the exact composition
- * remains visually dominant while the interaction surface stays responsive.
+ * The approved Home art remains a single, static bitmap. The gold network is
+ * brightened only for an explicit START/CONTINUE training intent; attachment,
+ * redraws, scrolling, and returning to Home never start an animation.
+ *
+ * The pulse mask is extracted from warm pixels in the reference bitmap and is
+ * constrained to the visible right-side network. It deliberately does not draw
+ * an invented orbit/arc or claim a complete canonical edge-traversal path.
  */
 class ReferenceHomeVisualView @JvmOverloads constructor(
     context: Context,
     attrs: android.util.AttributeSet? = null
 ) : View(context, attrs) {
 
-    private val bitmap: Bitmap = BitmapFactory.decodeResource(
-        resources,
-        R.drawable.rocky_home_reference_hero
-    )
+    private val bitmap: Bitmap = requireNotNull(
+        BitmapFactory.decodeResource(resources, R.drawable.rocky_home_reference_hero)
+    ) { "The validated Home hero resource could not be decoded" }
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
+    private val goldMask: Bitmap by lazy(LazyThreadSafetyMode.NONE) {
+        createGoldNetworkMask(bitmap)
     }
-    private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ringRect = RectF()
-    private var running = false
-    private var lastNanos = 0L
-    private var time = 0f
+    private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(
+            Color.rgb(255, 222, 164),
+            PorterDuff.Mode.SRC_IN
+        )
+    }
+    private val destination = RectF()
 
-    private val frame = object : Runnable {
+    private var pulseRunning = false
+    private var pulseStartedNanos = 0L
+    private var lastTrainingIntentEventId: String? = null
+    private var onPulseComplete: (() -> Unit)? = null
+
+    private val pulseFrame = object : Runnable {
         override fun run() {
-            if (!running) return
-            val now = System.nanoTime()
-            val dt = if (lastNanos == 0L) 0.016f
-            else ((now - lastNanos) / 1_000_000_000f).coerceIn(0f, 0.05f)
-            lastNanos = now
-            time += dt
+            if (!pulseRunning) return
+
+            val elapsedMs = (System.nanoTime() - pulseStartedNanos) / 1_000_000L
+            if (elapsedMs >= PULSE_DURATION_MS) {
+                pulseRunning = false
+                invalidate()
+                val completion = onPulseComplete
+                onPulseComplete = null
+                completion?.invoke()
+                return
+            }
+
             invalidate()
             postOnAnimation(this)
         }
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        running = true
-        lastNanos = 0L
-        removeCallbacks(frame)
-        postOnAnimation(frame)
+    /**
+     * Starts one gold-network flare for one explicit training intent.
+     * Repeated event IDs are ignored; a new intent replaces an active pulse.
+     */
+    fun playTrainingIntentPulse(
+        trainingIntentEventId: String,
+        onComplete: () -> Unit
+    ) {
+        if (trainingIntentEventId.isBlank()) return
+        if (trainingIntentEventId == lastTrainingIntentEventId) return
+
+        lastTrainingIntentEventId = trainingIntentEventId
+        pulseStartedNanos = System.nanoTime()
+        pulseRunning = true
+        onPulseComplete = onComplete
+        removeCallbacks(pulseFrame)
+        postOnAnimation(pulseFrame)
+        invalidate()
     }
 
     override fun onDetachedFromWindow() {
-        running = false
-        removeCallbacks(frame)
-        lastNanos = 0L
+        pulseRunning = false
+        removeCallbacks(pulseFrame)
+        onPulseComplete = null
         super.onDetachedFromWindow()
     }
 
@@ -90,71 +113,111 @@ class ReferenceHomeVisualView @JvmOverloads constructor(
         canvas.drawColor(Color.rgb(6, 12, 20))
 
         val side = min(width.toFloat(), height.toFloat())
+        if (side <= 0f) return
+
         val left = (width - side) * 0.5f
         val top = (height - side) * 0.5f
-        val dst = RectF(left, top, left + side, top + side)
-        canvas.drawBitmap(bitmap, null, dst, bitmapPaint)
+        destination.set(left, top, left + side, top + side)
+        canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
 
-        drawReferencePulse(canvas, left, top, side)
+        if (pulseRunning) {
+            val elapsedMs = (System.nanoTime() - pulseStartedNanos).coerceAtLeast(0L) / 1_000_000L
+            val rampEnd = PULSE_DURATION_MS * PULSE_RAMP_FRACTION
+            val ramp = (elapsedMs.toFloat() / rampEnd).coerceIn(0f, 1f)
+            val eased = ramp * ramp * (3f - 2f * ramp)
+            pulsePaint.alpha = (MAX_PULSE_ALPHA * eased).toInt().coerceIn(0, MAX_PULSE_ALPHA)
+            canvas.drawBitmap(goldMask, null, destination, pulsePaint)
+            pulsePaint.alpha = 255
+        }
     }
 
-    private fun drawReferencePulse(canvas: Canvas, left: Float, top: Float, side: Float) {
-        val cadence = 5.6f
-        val phase = (time % cadence) / cadence
-        val activeWindow = 0.28f
-        if (phase >= activeWindow) return
+    /**
+     * Creates an alpha mask from warm-gold pixels present in the reference.
+     * Rocky's foreground silhouette and Persian labels are excluded so the
+     * pulse brightens network/facets rather than fur or text.
+     */
+    private fun createGoldNetworkMask(source: Bitmap): Bitmap {
+        val w = source.width
+        val h = source.height
+        val sourcePixels = IntArray(w * h)
+        source.getPixels(sourcePixels, 0, w, 0, 0, w, h)
 
-        val p = (sin((phase / activeWindow) * PI).toFloat()).coerceIn(0f, 1f)
-        val cx = left + side * 0.50f
-        val cy = top + side * 0.52f
-        val r = side * 0.405f
+        val dogMask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val dogCanvas = Canvas(dogMask)
+        val dogPath = Path().apply {
+            moveTo(w * 0.27f, h * 0.13f)
+            lineTo(w * 0.30f, h * 0.12f)
+            lineTo(w * 0.33f, h * 0.15f)
+            lineTo(w * 0.36f, h * 0.23f)
+            lineTo(w * 0.40f, h * 0.27f)
+            lineTo(w * 0.50f, h * 0.24f)
+            lineTo(w * 0.57f, h * 0.20f)
+            lineTo(w * 0.61f, h * 0.13f)
+            lineTo(w * 0.64f, h * 0.12f)
+            lineTo(w * 0.68f, h * 0.17f)
+            lineTo(w * 0.70f, h * 0.28f)
+            lineTo(w * 0.71f, h * 0.42f)
+            lineTo(w * 0.71f, h * 0.58f)
+            lineTo(w * 0.73f, h * 0.72f)
+            lineTo(w * 0.72f, h * 0.82f)
+            lineTo(w * 0.68f, h * 0.90f)
+            lineTo(w * 0.61f, h * 0.95f)
+            lineTo(w * 0.40f, h * 0.95f)
+            lineTo(w * 0.30f, h * 0.94f)
+            lineTo(w * 0.24f, h * 0.89f)
+            lineTo(w * 0.22f, h * 0.81f)
+            lineTo(w * 0.21f, h * 0.69f)
+            lineTo(w * 0.20f, h * 0.57f)
+            lineTo(w * 0.20f, h * 0.46f)
+            lineTo(w * 0.21f, h * 0.34f)
+            lineTo(w * 0.23f, h * 0.24f)
+            close()
+        }
+        dogCanvas.drawPath(dogPath, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        })
+        val dogPixels = IntArray(w * h)
+        dogMask.getPixels(dogPixels, 0, w, 0, 0, w, h)
+        dogMask.recycle()
 
-        val centerAngle = (Math.toRadians(165.0) - phase / activeWindow * Math.toRadians(235.0)).toFloat()
-        val sweep = (32f + p * 54f)
+        val outputPixels = IntArray(w * h)
+        val focusLabel = RectF(w * 0.40f, h * 0.09f, w * 0.58f, h * 0.20f)
+        val establishedLabel = RectF(w * 0.76f, h * 0.44f, w * 0.98f, h * 0.62f)
+        val nextGoalLabel = RectF(w * 0.48f, h * 0.84f, w * 0.67f, h * 0.96f)
 
-        ringRect.set(cx - r, cy - r, cx + r, cy + r)
-        pulsePaint.strokeWidth = 2.0f + p * 4.0f
-        pulsePaint.color = Color.argb((40f + p * 140f).toInt().coerceIn(0, 190), 246, 213, 158)
-        canvas.drawArc(ringRect, Math.toDegrees(centerAngle.toDouble()).toFloat(), sweep, false, pulsePaint)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                if (x < w * GOLD_NETWORK_LEFT_BOUNDARY) continue
+                if (y < h * 0.04f || y > h * 0.98f) continue
+                if ((dogPixels[i] ushr 24) > 100) continue
+                if (focusLabel.contains(x.toFloat(), y.toFloat()) ||
+                    establishedLabel.contains(x.toFloat(), y.toFloat()) ||
+                    nextGoalLabel.contains(x.toFloat(), y.toFloat())
+                ) continue
 
-        // Localized glow on the crystal nodes.
-        for (i in 0 until 18) {
-            val a = -PI.toFloat() + i * (2f * PI.toFloat() / 18f)
-            val d = angularDistance(a, centerAngle)
-            val hit = (1f - (d / 0.38f)).coerceIn(0f, 1f) * p
-            if (hit <= 0.02f) continue
-            val x = cx + cos(a) * r
-            val y = cy + sin(a) * r
-            nodePaint.shader = RadialGradient(
-                x, y, side * (0.035f + hit * 0.05f),
-                intArrayOf(
-                    Color.argb((180f * hit).toInt().coerceIn(0, 180), 255, 226, 173),
-                    Color.TRANSPARENT
-                ),
-                floatArrayOf(0f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawCircle(x, y, side * (0.032f + hit * 0.055f), nodePaint)
+                val pixel = sourcePixels[i]
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                if (r >= g && g >= b + 5 && r > 100 && g > 72 && b > 42) {
+                    val goldContrast = ((r - g) * 2 + (g - b) * 2 + 35)
+                    val alpha = goldContrast.coerceIn(50, 190)
+                    outputPixels[i] = Color.argb(alpha, 255, 255, 255)
+                }
+            }
         }
 
-        // Very restrained global shimmer during the pulse.
-        glowPaint.shader = RadialGradient(
-            cx, cy, side * 0.42f,
-            intArrayOf(
-                Color.argb((14f * p).toInt(), 255, 221, 171),
-                Color.TRANSPARENT
-            ),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(cx, cy, side * 0.42f, glowPaint)
-        glowPaint.shader = null
-        nodePaint.shader = null
+        return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+            setPixels(outputPixels, 0, w, 0, 0, w, h)
+        }
     }
 
-    private fun angularDistance(a: Float, b: Float): Float {
-        val full = 2f * PI.toFloat()
-        val d = kotlin.math.abs((a - b) % full)
-        return min(d, full - d)
+    companion object {
+        private const val PULSE_DURATION_MS = 1_150L
+        private const val PULSE_RAMP_FRACTION = 0.78f
+        private const val MAX_PULSE_ALPHA = 142
+        private const val GOLD_NETWORK_LEFT_BOUNDARY = 0.435f
     }
 }
